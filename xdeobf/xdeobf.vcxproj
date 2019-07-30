@@ -59,6 +59,7 @@
   <ItemGroup>
     <ClInclude Include="Config.h" />
     <ClInclude Include="InsnOptimizer.h" />
+    <ClInclude Include="InsnMatcher.h" />
     <ClInclude Include="stdafx.h" />
   </ItemGroup>
   <ItemGroup>

@@ -21,8 +21,7 @@ int InsnOptimizer::visit_minsn() {
 	if (changes > 0) {
 		return changes;
 	}
-
-	return 0;
+	return applyPatterns(curins);
 }
 
 int InsnOptimizer::processHints(mop_t &op) {
@@ -52,10 +51,10 @@ int InsnOptimizer::processHints(mop_t &op) {
 
 	try {
 		value = std::stoll(valueStr.c_str());
-	} catch (std::invalid_argument& e) {
+	} catch (std::invalid_argument&) {
 		msg("[E] Invalid ASSUME_ALWAYS hint value: invalid value - %s\n", valueStr);
 		return 0;
-	} catch (std::out_of_range& e) {
+	} catch (std::out_of_range&) {
 		msg("[E] Invalid ASSUME_ALWAYS hint value: out of range - %s\n", valueStr);
 		return 0;
 	}
@@ -63,4 +62,8 @@ int InsnOptimizer::processHints(mop_t &op) {
 	dbg("[I] Substituting ASSUME_ALWAYS operand with %ld\n", value);
 	op.make_number(value, op.size);
 	return 1;
+}
+
+int InsnOptimizer::applyPatterns(minsn_t *insn) {
+	return 0;
 }

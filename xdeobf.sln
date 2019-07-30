@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28010.2026
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "xdeobf", "xdeobf\xdeobf.vcxproj", "{7FEDF5B5-A51C-49A0-8B45-8E3F1BA3C07A}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		IDA64|x64 = IDA64|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7FEDF5B5-A51C-49A0-8B45-8E3F1BA3C07A}.IDA64|x64.ActiveCfg = IDA64|x64
+		{7FEDF5B5-A51C-49A0-8B45-8E3F1BA3C07A}.IDA64|x64.Build.0 = IDA64|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {F48697A5-92FA-4217-BF24-CBF64E908E3E}
+	EndGlobalSection
+EndGlobal

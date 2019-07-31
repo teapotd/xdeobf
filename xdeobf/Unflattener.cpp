@@ -3,28 +3,31 @@
 int Unflattener::func(mblock_t *blk) {
 	mba = blk->mba;
 	if (mba->maturity == maturity) {
-		return 0;
+		// We're manipulating the whole graph, so just report "change" for each block
+		return (maturity == MMAT_LOCOPT);
 	}
 
 	maturity = mba->maturity;
 	dbg("[I] Current maturity: %s\n", mmatToString(maturity));
 
 	if (maturity == MMAT_LOCOPT) {
-		return performSwitchReconstruction();
+		performSwitchReconstruction();
+		return 1;
 	}
 	return 0;
 }
 
-int Unflattener::performSwitchReconstruction() {
+bool Unflattener::performSwitchReconstruction() {
 	if (!findDispatcherVar()) {
-		return 0;
+		return false;
 	}
-
 	if (!extractDispatcherRoot()) {
-		return 0;
+		return false;
 	}
-
-	return 1;
+	if (!processDispatcherSubgraph()) {
+		return false;
+	}
+	return true;
 }
 
 bool Unflattener::findDispatcherVar() {
@@ -140,5 +143,57 @@ bool Unflattener::extractDispatcherRoot() {
 
 	dispatcherRoot = blk->serial;
 	dbg("[I] Dispatcher root is %d\n", dispatcherRoot);
+	return true;
+}
+
+bool Unflattener::processDispatcherSubgraph() {
+	std::queue<int> que;
+	que.push(dispatcherRoot);
+	dispatcherBlocks.clear();
+	entries.clear();
+
+	while (!que.empty()) {
+		int id = que.front();
+		que.pop();
+
+		if (!dispatcherBlocks.insert(id).second) {
+			continue;
+		}
+
+		mblock_t *blk = mba->get_mblock(id);
+		minsn_t *tail = blk->tail;
+
+		if (blk->nsucc() > 2) {
+			dbg("[E] Dispatcher block with more than 2 succesors (id: %d)\n", id);
+			return false;
+		}
+
+		// TODO: verify if block doesn't do anything else
+
+		if (tail && is_mcode_jcond(tail->opcode)) {
+			if (!tail->l.is_reg() || tail->l.r != dispatcherVar || tail->r.t != mop_n) {
+				dbg("[E] Unexpected conditional at dispatcher block (id: %d)\n", id);
+				return false;
+			}
+
+			int jmpTarget = tail->d.b;
+			uint32 cmp = (uint32)tail->r.nnn->value;
+			int dst1 = blk->succ(0), dst2 = blk->succ(1);
+
+			if (tail->opcode == m_jz) {
+				que.push(jmpTarget != dst1 ? dst1 : dst2);
+				entries[cmp] = (jmpTarget != dst1 ? dst2 : dst1);
+			} else if (tail->opcode == m_jnz) {
+				que.push(jmpTarget == dst1 ? dst1 : dst2);
+				entries[cmp] = (jmpTarget == dst1 ? dst2 : dst1);
+			} else {
+				que.push(dst1);
+				que.push(dst2);
+			}
+		} else if (blk->nsucc() == 1) {
+			que.push(blk->succ(0));
+		}
+	}
+
 	return true;
 }

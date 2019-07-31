@@ -139,16 +139,17 @@ bool Unflattener::extractDispatcherRoot() {
 	if (condBegin != blk->head) {
 		dbg("[I] Dispatcher root contains more than conditional jump, splitting (id: %d)\n", blk->serial);
 		splitMBlock(blk, condBegin);
+		mba->verify(true);
 	}
 
-	dispatcherRoot = blk->serial;
-	dbg("[I] Dispatcher root is %d\n", dispatcherRoot);
+	dispatcherRoot = blk;
+	dbg("[I] Dispatcher root is %d\n", dispatcherRoot->serial);
 	return true;
 }
 
 bool Unflattener::processDispatcherSubgraph() {
 	std::queue<int> que;
-	que.push(dispatcherRoot);
+	que.push(dispatcherRoot->serial);
 	dispatcherBlocks.clear();
 	entries.clear();
 

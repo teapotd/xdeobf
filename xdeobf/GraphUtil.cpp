@@ -65,6 +65,5 @@ mblock_t *splitMBlock(mblock_t *src, minsn_t *splitInsn) {
 	src->mark_lists_dirty();
 	dst->mark_lists_dirty();
 	mba->mark_chains_dirty();
-	mba->verify(true);
 	return dst;
 }

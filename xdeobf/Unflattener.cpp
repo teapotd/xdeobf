@@ -206,7 +206,26 @@ bool Unflattener::normalizeJumpsToDispatcher() {
 			return false;
 		}
 	}
-	return true;
+
+	bool ok = true;
+
+	for (int id : dispatcherBlocks) {
+		if (id == dispatcherRoot->serial) {
+			continue;
+		}
+
+		mblock_t *blk = mba->get_mblock(id);
+
+		for (int in : blk->predset) {
+			if (!dispatcherBlocks.count(in)) {
+				msg("[E] Internal dispatcher block %d still has references from outside\n", blk->serial);
+				ok = false;
+				break;
+			}
+		}
+	}
+
+	return ok;
 }
 
 bool Unflattener::normalizeJumpsToDispatcher(mblock_t *blk) {

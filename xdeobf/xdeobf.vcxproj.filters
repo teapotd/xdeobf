@@ -27,6 +27,12 @@
     <ClInclude Include="InsnMatcher.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Unflattener.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Util.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -36,6 +42,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="InsnOptimizer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Unflattener.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

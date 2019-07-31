@@ -58,9 +58,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Config.h" />
+    <ClInclude Include="Unflattener.h" />
     <ClInclude Include="InsnOptimizer.h" />
     <ClInclude Include="InsnMatcher.h" />
     <ClInclude Include="stdafx.h" />
+    <ClInclude Include="Util.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="InsnOptimizer.cpp" />
@@ -68,6 +70,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='IDA64|x64'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="Unflattener.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

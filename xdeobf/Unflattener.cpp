@@ -20,7 +20,11 @@ int Unflattener::performSwitchReconstruction() {
 		return 0;
 	}
 
-	return 0;
+	if (!extractDispatcherRoot()) {
+		return 1;
+	}
+
+	return 1;
 }
 
 bool Unflattener::findDispatcherVar() {
@@ -40,13 +44,8 @@ bool Unflattener::findDispatcherVar() {
 
 	struct Visitor : public minsn_visitor_t {
 		int visit_minsn() {
-			// We're looking for jz/jg instructions...
-			if (curins->opcode != m_jz && curins->opcode != m_jg && curins->opcode != m_jnz && curins->opcode != m_jle) {
-				return 0;
-			}
-
-			// ...which compare register against a number
-			if (curins->l.t != mop_r || curins->r.t != mop_n) {
+			// We're looking for conditional jumps which compare register against a number
+			if (!is_mcode_jcond(curins->opcode) || !curins->l.is_reg() || curins->r.t != mop_n) {
 				return 0;
 			}
 
@@ -68,7 +67,7 @@ bool Unflattener::findDispatcherVar() {
 		}
 
 		std::vector<JumpInfo> seen;
-		int maxSeen = -1;
+		int maxSeen = -1; // Index of variable seen the most times
 	};
 
 	dispatcherVar = mr_none;
@@ -77,7 +76,7 @@ bool Unflattener::findDispatcherVar() {
 	mba->for_all_topinsns(tmp);
 
 	if (tmp.maxSeen < 0) {
-		dbg("[I] Dispatcher var not found\n");
+		msg("[E] Dispatcher var not found\n");
 		return false;
 	}
 
@@ -85,12 +84,12 @@ bool Unflattener::findDispatcherVar() {
 	double entropy = best.entropy();
 
 	if (best.values.size() < 2) {
-		dbg("[I] Dispatcher var not found\n");
+		msg("[E] Dispatcher var not found\n");
 		return false;
 	}
 
 	if (entropy < 0.9) {
-		dbg("[I] Too low entropy for dispatcher var (%lf)\n", entropy);
+		msg("[E] Too low entropy for dispatcher var (%lf)\n", entropy);
 		return false;
 	}
 
@@ -99,5 +98,46 @@ bool Unflattener::findDispatcherVar() {
 	qstring name;
 	get_mreg_name(&name, dispatcherVar, 4);
 	dbg("[I] Dispatcher var is %s\n", name.c_str());
+	return true;
+}
+
+bool Unflattener::extractDispatcherRoot() {
+	mblock_t *blk = mba->get_mblock(0);
+	while (blk->nsucc() == 1) {
+		blk = mba->get_mblock(blk->succ(0));
+	}
+
+	if (blk->nsucc() != 2) {
+		msg("[E] Unexpected succesor count for dispatcher root (id: %d, nsucc: %d)\n", blk->serial, blk->nsucc());
+		return false;
+	}
+
+	if (!blk->tail) {
+		msg("[E] Suspected dispatcher root is empty (id: %d)\n", blk->serial);
+		return false;
+	}
+
+	if (!is_mcode_jcond(blk->tail->opcode)) {
+		msg("[E] Suspected dispatcher root doesn't end with conditional jump (id: %d)\n", blk->serial);
+		return false;
+	}
+
+	if (!blk->tail->l.is_reg() || blk->tail->l.r != dispatcherVar) {
+		msg("[E] Suspected dispatcher root doesn't compare against dispatcher var (id: %d)\n", blk->serial);
+		return false;
+	}
+
+	minsn_t *condBegin = blk->tail;
+	while (condBegin->prev && is_mcode_set(condBegin->prev->opcode)) {
+		condBegin = condBegin->prev;
+	}
+
+	if (condBegin != blk->head) {
+		dbg("[I] Dispatcher root contains more than conditional jump, splitting (id: %d)\n", blk->serial);
+		splitMBlock(blk, condBegin);
+	}
+
+	dispatcherRoot = blk->serial;
+	dbg("[I] Dispatcher root is %d\n", dispatcherRoot);
 	return true;
 }

@@ -58,6 +58,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Config.h" />
+    <ClInclude Include="GraphUtil.h" />
     <ClInclude Include="Unflattener.h" />
     <ClInclude Include="InsnOptimizer.h" />
     <ClInclude Include="InsnMatcher.h" />
@@ -65,6 +66,7 @@
     <ClInclude Include="Util.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="GraphUtil.cpp" />
     <ClCompile Include="InsnOptimizer.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='IDA64|x64'">Create</PrecompiledHeader>

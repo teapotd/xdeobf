@@ -6,6 +6,7 @@ void changeMBlockSuccesor(mblock_t *src, mblock_t *oldDst, mblock_t *newDst) {
 	src->succset.add(newDst->serial);
 	newDst->predset.add(src->serial);
 
+	// TODO: instructions fixing
 	if (src->tail && src->tail->opcode == m_goto) {
 		src->tail->l.b = newDst->serial;
 	}
@@ -44,14 +45,16 @@ mblock_t *copyMBlockEmpty(mblock_t *src, int insertBefore) {
 mblock_t *splitMBlock(mblock_t *src, minsn_t *splitInsn) {
 	mbl_array_t *mba = src->mba;
 	mblock_t *dst = copyMBlockEmpty(src, src->serial);
-	dst->type = BLT_1WAY;
 
 	while (src->head && src->head != splitInsn) {
 		minsn_t *cur = src->head;
 		src->remove_from_block(cur);
-		dst->insert_into_block(new minsn_t(*cur), dst->tail);
-		delete cur;
+		dst->insert_into_block(cur, dst->tail);
 	}
+
+	src->start = (src->head ? src->head->ea : src->end);
+	dst->type = BLT_1WAY;
+	dst->end = src->start;
 
 	intvec_t preds = src->predset;
 	for (int in : preds) {
@@ -64,6 +67,6 @@ mblock_t *splitMBlock(mblock_t *src, minsn_t *splitInsn) {
 	src->mark_lists_dirty();
 	dst->mark_lists_dirty();
 	mba->mark_chains_dirty();
-	//mba->verify(true);
+	mba->verify(true);
 	return src;
 }

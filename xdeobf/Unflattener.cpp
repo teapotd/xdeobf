@@ -21,7 +21,7 @@ int Unflattener::performSwitchReconstruction() {
 	}
 
 	if (!extractDispatcherRoot()) {
-		return 1;
+		return 0;
 	}
 
 	return 1;
@@ -127,6 +127,7 @@ bool Unflattener::extractDispatcherRoot() {
 		return false;
 	}
 
+	// Jump is preceded by instructions setting condition codes, find first of them
 	minsn_t *condBegin = blk->tail;
 	while (condBegin->prev && is_mcode_set(condBegin->prev->opcode)) {
 		condBegin = condBegin->prev;

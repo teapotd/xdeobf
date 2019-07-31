@@ -27,6 +27,12 @@ bool Unflattener::performSwitchReconstruction() {
 	if (!processDispatcherSubgraph()) {
 		return false;
 	}
+	if (!normalizeJumpsToDispatcher()) {
+		return false;
+	}
+
+	dumpMbaToFile(mba, "C:\\Users\\teapot\\Desktop\\mba_dump\\done.txt");
+	mba->verify(true);
 	return true;
 }
 
@@ -130,16 +136,11 @@ bool Unflattener::extractDispatcherRoot() {
 		return false;
 	}
 
-	// Jump is preceded by instructions setting condition codes, find first of them
-	minsn_t *condBegin = blk->tail;
-	while (condBegin->prev && is_mcode_set(condBegin->prev->opcode)) {
-		condBegin = condBegin->prev;
-	}
+	minsn_t *condBegin = getJccRealBegin(blk->tail);
 
 	if (condBegin != blk->head) {
 		dbg("[I] Dispatcher root contains more than conditional jump, splitting (id: %d)\n", blk->serial);
 		splitMBlock(blk, condBegin);
-		mba->verify(true);
 	}
 
 	dispatcherRoot = blk;
@@ -162,13 +163,13 @@ bool Unflattener::processDispatcherSubgraph() {
 		}
 
 		mblock_t *blk = mba->get_mblock(id);
-		minsn_t *tail = blk->tail;
 
 		if (blk->nsucc() > 2) {
 			dbg("[E] Dispatcher block with more than 2 succesors (id: %d)\n", id);
 			return false;
 		}
 
+		minsn_t *tail = blk->tail;
 		// TODO: verify if block doesn't do anything else
 
 		if (tail && is_mcode_jcond(tail->opcode)) {
@@ -177,19 +178,19 @@ bool Unflattener::processDispatcherSubgraph() {
 				return false;
 			}
 
-			int jmpTarget = tail->d.b;
 			uint32 cmp = (uint32)tail->r.nnn->value;
-			int dst1 = blk->succ(0), dst2 = blk->succ(1);
+			int jump, fall;
+			getBlockCondExits(blk, jump, fall);
 
 			if (tail->opcode == m_jz) {
-				que.push(jmpTarget != dst1 ? dst1 : dst2);
-				entries[cmp] = (jmpTarget != dst1 ? dst2 : dst1);
+				que.push(fall);
+				entries[cmp] = jump;
 			} else if (tail->opcode == m_jnz) {
-				que.push(jmpTarget == dst1 ? dst1 : dst2);
-				entries[cmp] = (jmpTarget == dst1 ? dst2 : dst1);
+				que.push(jump);
+				entries[cmp] = fall;
 			} else {
-				que.push(dst1);
-				que.push(dst2);
+				que.push(jump);
+				que.push(fall);
 			}
 		} else if (blk->nsucc() == 1) {
 			que.push(blk->succ(0));
@@ -197,4 +198,55 @@ bool Unflattener::processDispatcherSubgraph() {
 	}
 
 	return true;
+}
+
+bool Unflattener::normalizeJumpsToDispatcher() {
+	for (int i = 0; i < mba->qty; i++) {
+		if (!normalizeJumpsToDispatcher(mba->get_mblock(i))) {
+			return false;
+		}
+	}
+	return true;
+}
+
+bool Unflattener::normalizeJumpsToDispatcher(mblock_t *blk) {
+	if (dispatcherBlocks.count(blk->serial)) {
+		return true;
+	}
+
+	if (blk->nsucc() == 1) {
+		if (shouldNormalize(blk->succ(0))) {
+			dbg("[I] Normalizing goto for %d\n", blk->serial);
+			forceMBlockGoto(blk, dispatcherRoot);
+		}
+		return true;
+	}
+
+	if (blk->nsucc() != 2) {
+		return true;
+	}
+
+	int jump, fall;
+	getBlockCondExits(blk, jump, fall);
+
+	bool normJump = shouldNormalize(jump);
+	bool normFall = shouldNormalize(fall);
+
+	if (normJump && normFall) {
+		dbg("[I] Changing conditional into goto for %d\n", blk->serial);
+		forceMBlockGoto(blk, dispatcherRoot);
+	} else if (normJump) {
+		dbg("[I] Normalizing conditional jump for %d\n", blk->serial);
+		setMBlockJcc(blk, dispatcherRoot);
+	} else if (normFall) {
+		msg("[E] Unsupported normalization for %d\n", blk->serial);
+		return false;
+	}
+
+	return true;
+}
+
+bool Unflattener::shouldNormalize(int id) {
+	mblock_t *blk = mba->get_mblock(id);
+	return blk != dispatcherRoot && dispatcherBlocks.count(skipGotos(blk)->serial);
 }

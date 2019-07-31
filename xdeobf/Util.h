@@ -133,3 +133,22 @@ static void dumpMbaToFile(mbl_array_t *mba, const char *path) {
 	mba->print(printer);
 	qfclose(file);
 }
+
+// Jump is preceded by instructions setting condition codes, find first of them
+static minsn_t *getJccRealBegin(minsn_t *jcc) {
+	// TODO: check if subject matches
+	minsn_t *insn = jcc;
+	while (insn->prev && is_mcode_set(insn->prev->opcode)) {
+		insn = insn->prev;
+	}
+	return insn;
+}
+
+static void getBlockCondExits(mblock_t *block, int& jump, int& fall) {
+	QASSERT(133701, block->nsucc() == 2 && block->tail && is_mcode_jcond(block->tail->opcode) && block->tail->d.t == mop_b);
+	jump = block->succ(0);
+	fall = block->succ(1);
+	if (jump != block->tail->d.b) {
+		std::swap(jump, fall);
+	}
+}

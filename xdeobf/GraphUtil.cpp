@@ -1,5 +1,15 @@
 #include "stdafx.h"
 
+void delMBlockEdge(mblock_t *src, mblock_t *dst) {
+	src->succset.del(dst->serial);
+	dst->predset.del(src->serial);
+}
+
+void addMBlockEdge(mblock_t *src, mblock_t *dst) {
+	src->succset.add(dst->serial);
+	dst->predset.add(src->serial);
+}
+
 mblock_t *copyMBlockEmpty(mblock_t *src, int insertBefore) {
 	mblock_t *dst = src->mba->insert_block(insertBefore);
 
@@ -44,8 +54,7 @@ mblock_t *splitMBlock(mblock_t *src, minsn_t *splitInsn) {
 		mblock_t *inBlock = mba->get_mblock(in);
 
 		inBlock->succset.del(src->serial);
-		inBlock->succset.add(dst->serial);
-		dst->predset.add(in);
+		addMBlockEdge(inBlock, dst);
 
 		if (inBlock->tail) {
 			if (inBlock->tail->opcode == m_goto) {
@@ -59,11 +68,71 @@ mblock_t *splitMBlock(mblock_t *src, minsn_t *splitInsn) {
 	}
 
 	src->predset.clear();
-	src->predset.add(dst->serial);
-	dst->succset.add(src->serial);
+	addMBlockEdge(dst, src);
 
 	src->mark_lists_dirty();
 	dst->mark_lists_dirty();
 	mba->mark_chains_dirty();
 	return dst;
+}
+
+mblock_t *skipGotos(mblock_t *blk) {
+	while (true) {
+		minsn_t *insn = getf_reginsn(blk->head);
+		if (!insn || insn->opcode != m_goto || insn->l.t != mop_b) {
+			return blk;
+		}
+		blk = blk->mba->get_mblock(insn->l.b);
+	}
+}
+
+void forceMBlockGoto(mblock_t *src, mblock_t *dst) {
+	mbl_array_t *mba = src->mba;
+
+	while (src->nsucc() > 0) {
+		mblock_t *other = mba->get_mblock(src->succ(0));
+		delMBlockEdge(src, other);
+		other->mark_lists_dirty();
+	}
+
+	addMBlockEdge(src, dst);
+
+	if (src->tail && is_mcode_jcond(src->tail->opcode)) {
+		minsn_t *insn = getJccRealBegin(src->tail);
+		while (insn) {
+			minsn_t *next = insn->next;
+			src->remove_from_block(insn);
+			delete insn;
+			insn = next;
+		}
+	}
+
+	if (!src->tail || src->tail->opcode != m_goto) {
+		minsn_t *ins = new minsn_t(src->end);
+		ins->opcode = m_goto;
+		ins->l.t = mop_b;
+		ins->l.b = dst->serial;
+		src->insert_into_block(ins, src->tail);
+	} else {
+		src->tail->l.b = dst->serial;
+	}
+
+	src->type = BLT_1WAY;
+	src->mark_lists_dirty();
+	dst->mark_lists_dirty();
+}
+
+void setMBlockJcc(mblock_t *src, mblock_t *dst) {
+	QASSERT(133702, src->tail && is_mcode_jcond(src->tail->opcode) && src->tail->d.t == mop_b);
+
+	mbl_array_t *mba = src->mba;
+	mblock_t *old = mba->get_mblock(src->tail->d.b);
+
+	delMBlockEdge(src, old);
+	addMBlockEdge(src, dst);
+	src->tail->d.b = dst->serial;
+
+	src->mark_lists_dirty();
+	dst->mark_lists_dirty();
+	old->mark_lists_dirty();
 }

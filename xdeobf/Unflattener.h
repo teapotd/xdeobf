@@ -6,6 +6,10 @@ struct Unflattener : public optblock_t {
 	bool findDispatcherVar();
 	bool extractDispatcherRoot();
 	bool processDispatcherSubgraph();
+	bool normalizeJumpsToDispatcher();
+	bool normalizeJumpsToDispatcher(mblock_t *blk);
+
+	bool shouldNormalize(int blk);
 
 	mbl_array_t *mba;
 	mba_maturity_t maturity = MMAT_ZERO;

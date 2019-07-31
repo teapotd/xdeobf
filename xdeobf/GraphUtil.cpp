@@ -1,21 +1,5 @@
 #include "stdafx.h"
 
-void changeMBlockSuccesor(mblock_t *src, mblock_t *oldDst, mblock_t *newDst) {
-	src->succset.del(oldDst->serial);
-	oldDst->predset.del(src->serial);
-	src->succset.add(newDst->serial);
-	newDst->predset.add(src->serial);
-
-	// TODO: instructions fixing
-	if (src->tail && src->tail->opcode == m_goto) {
-		src->tail->l.b = newDst->serial;
-	}
-
-	src->mark_lists_dirty();
-	oldDst->mark_lists_dirty();
-	newDst->mark_lists_dirty();
-}
-
 mblock_t *copyMBlockEmpty(mblock_t *src, int insertBefore) {
 	mblock_t *dst = src->mba->insert_block(insertBefore);
 
@@ -53,14 +37,28 @@ mblock_t *splitMBlock(mblock_t *src, minsn_t *splitInsn) {
 	}
 
 	src->start = (src->head ? src->head->ea : src->end);
-	dst->type = BLT_1WAY;
 	dst->end = src->start;
+	dst->type = BLT_1WAY;
 
-	intvec_t preds = src->predset;
-	for (int in : preds) {
-		changeMBlockSuccesor(mba->get_mblock(in), src, dst);
+	for (int in : src->predset) {
+		mblock_t *inBlock = mba->get_mblock(in);
+
+		inBlock->succset.del(src->serial);
+		inBlock->succset.add(dst->serial);
+		dst->predset.add(in);
+
+		if (inBlock->tail) {
+			if (inBlock->tail->opcode == m_goto) {
+				inBlock->tail->l.b = dst->serial;
+			} else if (is_mcode_jcond(inBlock->tail->opcode)) {
+				inBlock->tail->d.b = dst->serial;
+			}
+		}
+
+		inBlock->mark_lists_dirty();
 	}
 
+	src->predset.clear();
 	src->predset.add(dst->serial);
 	dst->succset.add(src->serial);
 
@@ -68,5 +66,5 @@ mblock_t *splitMBlock(mblock_t *src, minsn_t *splitInsn) {
 	dst->mark_lists_dirty();
 	mba->mark_chains_dirty();
 	mba->verify(true);
-	return src;
+	return dst;
 }

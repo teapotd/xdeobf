@@ -59,7 +59,7 @@ int InsnOptimizer::processHints(mop_t &op) {
 		return 0;
 	}
 
-	dbg("[I] Substituting ASSUME_ALWAYS operand with %ld\n", value);
+	//dbg("[I] Substituting ASSUME_ALWAYS operand with %ld\n", value);
 	op.make_number(value, op.size);
 	return 1;
 }

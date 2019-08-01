@@ -10,7 +10,7 @@ struct Unflattener : public optblock_t {
 	bool normalizeJumpsToDispatcher(mblock_t *blk);
 	bool createSwitch();
 
-	bool mapTarget(uint32 key, mblock_t *dst);
+	bool addCase(uint32 key, mblock_t *dst);
 	bool shouldNormalize(int blk);
 	bool canNormalize(int blk);
 

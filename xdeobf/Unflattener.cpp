@@ -1,9 +1,10 @@
 #include "stdafx.h"
 
+// Callback for block optimizer
 int Unflattener::func(mblock_t *blk) {
 	mba = blk->mba;
 	if (mba->maturity == maturity) {
-		// We're manipulating the whole graph, so just report "change" for each block
+		// We're manipulating the whole graph in LOCOPT phase, so just report "change" for each block
 		return (maturity == MMAT_LOCOPT);
 	}
 
@@ -17,6 +18,7 @@ int Unflattener::func(mblock_t *blk) {
 	return 0;
 }
 
+// LOCOPT phase: reconstruct dispatcher switch
 bool Unflattener::performSwitchReconstruction() {
 	if (!findDispatcherVar()) {
 		return false;
@@ -41,6 +43,7 @@ bool Unflattener::performSwitchReconstruction() {
 	return true;
 }
 
+// Find register used by dispatcher to resolve target block
 bool Unflattener::findDispatcherVar() {
 	struct JumpInfo {
 		double entropy() {
@@ -53,7 +56,7 @@ bool Unflattener::findDispatcherVar() {
 		}
 
 		mreg_t reg;
-		std::vector<uint64> values;
+		std::vector<uint64> values; // Values compared against this register
 	};
 
 	struct Visitor : public minsn_visitor_t {
@@ -115,6 +118,7 @@ bool Unflattener::findDispatcherVar() {
 	return true;
 }
 
+// Find first comparison against dispatcher variable and extract it to separate block if necessary
 bool Unflattener::extractDispatcherRoot() {
 	mblock_t *blk = mba->get_mblock(0);
 	while (blk->nsucc() == 1) {
@@ -145,7 +149,7 @@ bool Unflattener::extractDispatcherRoot() {
 
 	if (condBegin != blk->head) {
 		dbg("[I] Dispatcher root contains more than conditional jump, splitting (id: %d)\n", blk->serial);
-		splitMBlock(blk, condBegin);
+		splitBlock(blk, condBegin);
 	}
 
 	dispatcherRoot = blk;
@@ -153,6 +157,7 @@ bool Unflattener::extractDispatcherRoot() {
 	return true;
 }
 
+// Find all blocks that belong to dispatcher and resolve switch cases
 bool Unflattener::processDispatcherSubgraph() {
 	std::queue<int> que;
 	que.push(dispatcherRoot->serial);
@@ -176,7 +181,7 @@ bool Unflattener::processDispatcherSubgraph() {
 		minsn_t *tail = blk->tail;
 		// TODO: verify if block doesn't do anything else
 
-		if (tail && is_mcode_jcond(tail->opcode)) {
+		if (endsWithJcc(blk)) {
 			if (!tail->l.is_reg() || tail->l.r != dispatcherVar || tail->r.t != mop_n) {
 				dbg("[E] Unexpected conditional at dispatcher block (id: %d)\n", id);
 				return false;
@@ -188,12 +193,12 @@ bool Unflattener::processDispatcherSubgraph() {
 
 			if (tail->opcode == m_jz) {
 				que.push(fall);
-				if (!mapTarget(cmp, mba->get_mblock(jump))) {
+				if (!addCase(cmp, mba->get_mblock(jump))) {
 					return false;
 				}
 			} else if (tail->opcode == m_jnz) {
 				que.push(jump);
-				if (!mapTarget(cmp, mba->get_mblock(fall))) {
+				if (!addCase(cmp, mba->get_mblock(fall))) {
 					return false;
 				}
 			} else {
@@ -209,7 +214,7 @@ bool Unflattener::processDispatcherSubgraph() {
 	return true;
 }
 
-bool Unflattener::mapTarget(uint32 key, mblock_t *dst) {
+bool Unflattener::addCase(uint32 key, mblock_t *dst) {
 	auto &elem = keyToTarget[key];
 	if (elem) {
 		msg("[E] Key %u has more than one target blocks (%d, %d)\n", elem->serial, dst->serial);
@@ -219,6 +224,7 @@ bool Unflattener::mapTarget(uint32 key, mblock_t *dst) {
 	return true;
 }
 
+// Sometimes there jump into internal dispatcher nodes, change them to dispatcher root
 bool Unflattener::normalizeJumpsToDispatcher() {
 	for (int i = 0; i < mba->qty; i++) {
 		if (!normalizeJumpsToDispatcher(mba->get_mblock(i))) {
@@ -228,6 +234,7 @@ bool Unflattener::normalizeJumpsToDispatcher() {
 
 	bool ok = true;
 
+	// Now check if we didn't miss anything
 	for (mblock_t *blk : dispatcherBlocks) {
 		if (blk == dispatcherRoot) {
 			continue;
@@ -247,13 +254,13 @@ bool Unflattener::normalizeJumpsToDispatcher() {
 
 bool Unflattener::normalizeJumpsToDispatcher(mblock_t *blk) {
 	if (dispatcherBlocks.count(blk)) {
-		return true;
+		return true; // We don't care about jumps from dispatcher blocks
 	}
 
 	if (blk->nsucc() == 1) {
 		if (shouldNormalize(blk->succ(0))) {
 			dbg("[I] Normalizing goto for %d\n", blk->serial);
-			forceMBlockGoto(blk, dispatcherRoot);
+			forceBlockGoto(blk, dispatcherRoot);
 		}
 		return true;
 	}
@@ -275,13 +282,13 @@ bool Unflattener::normalizeJumpsToDispatcher(mblock_t *blk) {
 
 	if (normJump && normFall) {
 		dbg("[I] Changing conditional into goto for %d\n", blk->serial);
-		forceMBlockGoto(blk, dispatcherRoot);
+		forceBlockGoto(blk, dispatcherRoot);
 	} else if (normJump) {
 		dbg("[I] Normalizing conditional jump for %d\n", blk->serial);
-		setMBlockJcc(blk, dispatcherRoot);
+		setBlockJcc(blk, dispatcherRoot);
 	} else if (normFall) {
 		dbg("[I] Normalizing fallthrough for %d\n", blk->serial);
-		insertGotoMBlock(blk, dispatcherRoot);
+		insertGotoBlock(blk, dispatcherRoot);
 	}
 
 	return true;
@@ -297,6 +304,7 @@ bool Unflattener::canNormalize(int id) {
 	return dispatcherBlocks.count(skipGotos(blk));
 }
 
+// Finally, change dispatcher root into NWAY block (a switch)
 bool Unflattener::createSwitch() {
 	std::map<mblock_t*, svalvec_t> targetsToKeys;
 	for (auto &entry : keyToTarget) {
@@ -305,13 +313,13 @@ bool Unflattener::createSwitch() {
 	targetsToKeys[mba->get_mblock(mba->qty - 1)] = {}; // default branch
 
 	minsn_t *jtbl = new minsn_t(dispatcherRoot->tail->ea);
-	delMBlockAllOutgoing(dispatcherRoot);
+	removeAllOutgoingEdges(dispatcherRoot);
 	deleteWholeJcc(dispatcherRoot);
 	dispatcherRoot->type = BLT_NWAY;
 
 	mcases_t *cases = new mcases_t();
 	for (auto &entry : targetsToKeys) {
-		addMBlockEdge(dispatcherRoot, entry.first);
+		addEdge(dispatcherRoot, entry.first);
 		cases->targets.push_back(entry.first->serial);
 		cases->values.push_back(entry.second);
 	}

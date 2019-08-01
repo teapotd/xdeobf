@@ -5,6 +5,7 @@ int InsnOptimizer::func(mblock_t *blk, minsn_t *ins) {
 	this->blk = blk;
 	this->topins = ins;
 
+	// Optimize all subinstructions (including ins)
 	int changes = ins->for_all_insns(*this);
 
 	if (changes > 0) {
@@ -16,6 +17,7 @@ int InsnOptimizer::func(mblock_t *blk, minsn_t *ins) {
 	return changes;
 }
 
+// Callback for for_all_insns
 int InsnOptimizer::visit_minsn() {
 	int changes = processHints(curins->l) + processHints(curins->r);
 	if (changes > 0) {
@@ -24,6 +26,7 @@ int InsnOptimizer::visit_minsn() {
 	return applyPatterns(curins);
 }
 
+// If operand is variable with name of form "ASSUME_ALWAYS_x" replace it with constant "x"
 int InsnOptimizer::processHints(mop_t &op) {
 	qstring name;
 	if (op.t == mop_v) {
@@ -65,5 +68,6 @@ int InsnOptimizer::processHints(mop_t &op) {
 }
 
 int InsnOptimizer::applyPatterns(minsn_t *insn) {
+	// TODO: pattern optimizations
 	return 0;
 }

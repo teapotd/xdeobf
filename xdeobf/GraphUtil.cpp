@@ -1,27 +1,28 @@
 #include "stdafx.h"
 
-void delMBlockEdge(mblock_t *src, mblock_t *dst) {
+void removeEdge(mblock_t *src, mblock_t *dst) {
 	src->succset.del(dst->serial);
 	dst->predset.del(src->serial);
 	src->mark_lists_dirty();
 	dst->mark_lists_dirty();
 }
 
-void addMBlockEdge(mblock_t *src, mblock_t *dst) {
+void addEdge(mblock_t *src, mblock_t *dst) {
 	src->succset.add(dst->serial);
 	dst->predset.add(src->serial);
 	src->mark_lists_dirty();
 	dst->mark_lists_dirty();
 }
 
-void delMBlockAllOutgoing(mblock_t *blk) {
+void removeAllOutgoingEdges(mblock_t *blk) {
 	while (blk->nsucc() > 0) {
 		mblock_t *other = blk->mba->get_mblock(blk->succ(0));
-		delMBlockEdge(blk, other);
+		removeEdge(blk, other);
 	}
 }
 
-mblock_t *copyMBlockEmpty(mblock_t *src, int insertBefore) {
+// Insert new empty block with attributes copied from src
+mblock_t *copyBlockEmpty(mblock_t *src, int insertBefore) {
 	mblock_t *dst = src->mba->insert_block(insertBefore);
 
 	// Copy struct members
@@ -47,8 +48,9 @@ mblock_t *copyMBlockEmpty(mblock_t *src, int insertBefore) {
 	return dst;
 }
 
-mblock_t *copyMBlock(mblock_t *src, int insertBefore) {
-	mblock_t *dst = copyMBlockEmpty(src, insertBefore);
+// Insert new block with instructions and attributes copied from src
+mblock_t *copyBlock(mblock_t *src, int insertBefore) {
+	mblock_t *dst = copyBlockEmpty(src, insertBefore);
 	dst->flags |= MBL_FAKE;
 	for (minsn_t *ins = src->head; ins; ins = ins->next) {
 		dst->insert_into_block(new minsn_t(*ins), dst->tail);
@@ -56,9 +58,10 @@ mblock_t *copyMBlock(mblock_t *src, int insertBefore) {
 	return dst;
 }
 
-mblock_t *splitMBlock(mblock_t *src, minsn_t *splitInsn) {
+// Split block before specified instruction
+mblock_t *splitBlock(mblock_t *src, minsn_t *splitInsn) {
 	mbl_array_t *mba = src->mba;
-	mblock_t *dst = copyMBlockEmpty(src, src->serial);
+	mblock_t *dst = copyBlockEmpty(src, src->serial);
 
 	while (src->head && src->head != splitInsn) {
 		minsn_t *cur = src->head;
@@ -74,22 +77,21 @@ mblock_t *splitMBlock(mblock_t *src, minsn_t *splitInsn) {
 		mblock_t *inBlock = mba->get_mblock(in);
 
 		inBlock->succset.del(src->serial);
-		addMBlockEdge(inBlock, dst);
+		addEdge(inBlock, dst);
 
-		if (inBlock->tail) {
-			if (inBlock->tail->opcode == m_goto) {
-				inBlock->tail->l.b = dst->serial;
-			} else if (is_mcode_jcond(inBlock->tail->opcode)) {
-				inBlock->tail->d.b = dst->serial;
-			}
+		if (endsWithGoto(inBlock)) {
+			inBlock->tail->l.b = dst->serial;
+		} else if (endsWithJcc(inBlock) && inBlock->tail->d.b == src->serial) {
+			inBlock->tail->d.b = dst->serial;
 		}
 	}
 
 	src->predset.clear();
-	addMBlockEdge(dst, src);
+	addEdge(dst, src);
 	return dst;
 }
 
+// Skip 1WAY blocks containing only gotos
 mblock_t *skipGotos(mblock_t *blk) {
 	while (true) {
 		minsn_t *insn = getf_reginsn(blk->head);
@@ -100,46 +102,47 @@ mblock_t *skipGotos(mblock_t *blk) {
 	}
 }
 
-void forceMBlockGoto(mblock_t *src, mblock_t *dst) {
-	delMBlockAllOutgoing(src);
-	addMBlockEdge(src, dst);
+// Set block to 1WAY and add/change goto to specified dst
+void forceBlockGoto(mblock_t *src, mblock_t *dst) {
+	removeAllOutgoingEdges(src);
+	addEdge(src, dst);
 
-	if (src->tail && is_mcode_jcond(src->tail->opcode)) {
+	if (endsWithJcc(src)) {
 		deleteWholeJcc(src);
 	}
 
-	if (!src->tail || src->tail->opcode != m_goto) {
+	if (endsWithGoto(src)) {
+		src->tail->l.b = dst->serial;
+	} else {
 		minsn_t *ins = new minsn_t(src->end);
 		ins->opcode = m_goto;
 		ins->l.t = mop_b;
 		ins->l.b = dst->serial;
 		src->insert_into_block(ins, src->tail);
-	} else {
-		src->tail->l.b = dst->serial;
 	}
 
 	src->type = BLT_1WAY;
 }
 
-void setMBlockJcc(mblock_t *src, mblock_t *dst) {
-	QASSERT(133702, src->tail && is_mcode_jcond(src->tail->opcode) && src->tail->d.t == mop_b);
-
+void setBlockJcc(mblock_t *src, mblock_t *dst) {
+	QASSERT(133702, endsWithJcc(src));
 	mbl_array_t *mba = src->mba;
 	mblock_t *old = mba->get_mblock(src->tail->d.b);
 
-	delMBlockEdge(src, old);
-	addMBlockEdge(src, dst);
+	removeEdge(src, old);
+	addEdge(src, dst);
 	src->tail->d.b = dst->serial;
 }
 
-bool insertGotoMBlock(mblock_t *after, mblock_t *dst) {
-	if (after->tail && after->tail->opcode == m_goto) {
+// Insert block with a single goto after specified block
+bool insertGotoBlock(mblock_t *after, mblock_t *dst) {
+	if (endsWithGoto(after)) {
 		return false; // Inserting this block is useless then
 	}
 
-	delMBlockEdge(after, after->nextb);
+	removeEdge(after, after->nextb);
 
-	mblock_t *blk = copyMBlockEmpty(after, after->serial + 1);
+	mblock_t *blk = copyBlockEmpty(after, after->serial + 1);
 	blk->start = after->end - 1;
 	blk->end = after->end;
 	blk->type = BLT_1WAY;
@@ -151,7 +154,7 @@ bool insertGotoMBlock(mblock_t *after, mblock_t *dst) {
 	ins->l.b = dst->serial;
 	blk->insert_into_block(ins, blk->tail);
 
-	addMBlockEdge(after, blk);
-	addMBlockEdge(blk, dst);
+	addEdge(after, blk);
+	addEdge(blk, dst);
 	return true;
 }

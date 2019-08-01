@@ -1,12 +1,13 @@
 #pragma once
 
+// Count 1-bits in integer (https://graphics.stanford.edu/~seander/bithacks.html)
 inline int bitCount(uint32 v) {
-	// https://graphics.stanford.edu/~seander/bithacks.html
 	v = v - ((v >> 1) & 0x55555555);
 	v = (v & 0x33333333) + ((v >> 2) & 0x33333333);
 	return ((v + (v >> 4) & 0xF0F0F0F) * 0x1010101) >> 24;
 }
 
+// Microcode maturity to string (https://github.com/RolfRolles/HexRaysDeob/blob/master/HexRaysUtil.cpp)
 static const char *mmatToString(mba_maturity_t mat) {
 	switch (mat) {
 	case MMAT_ZERO:         return "MMAT_ZERO";
@@ -22,6 +23,7 @@ static const char *mmatToString(mba_maturity_t mat) {
 	}
 }
 
+// Microcode operand type to string (https://github.com/RolfRolles/HexRaysDeob/blob/master/HexRaysUtil.cpp)
 static const char *moptToString(mopt_t t) {
 	switch (t) {
 	case mop_z:   return "mop_z";
@@ -40,88 +42,89 @@ static const char *moptToString(mopt_t t) {
 	case mop_fn:  return "mop_fn";
 	case mop_p:   return "mop_p";
 	case mop_sc:  return "mop_sc";
-	default:      return "???";
+	default:      return "mop_unknown";
 	};
 }
 
+// Brief microcode instruction summary (https://github.com/RolfRolles/HexRaysDeob/blob/master/HexRaysUtil.cpp)
 static qstring minsnToString(minsn_t *o) {
 	char outBuf[512];
 
 	switch (o->opcode) {
-	case m_nop: snprintf(outBuf, sizeof(outBuf), "m_nop"); break;
-	case m_stx: snprintf(outBuf, sizeof(outBuf), "m_stx(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_ldx: snprintf(outBuf, sizeof(outBuf), "m_ldx(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_ldc: snprintf(outBuf, sizeof(outBuf), "m_ldc(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
-	case m_mov: snprintf(outBuf, sizeof(outBuf), "m_mov(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
-	case m_neg: snprintf(outBuf, sizeof(outBuf), "m_neg(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
-	case m_lnot: snprintf(outBuf, sizeof(outBuf), "m_lnot(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
-	case m_bnot: snprintf(outBuf, sizeof(outBuf), "m_bnot(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
-	case m_xds: snprintf(outBuf, sizeof(outBuf), "m_xds(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
-	case m_xdu: snprintf(outBuf, sizeof(outBuf), "m_xdu(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
-	case m_low: snprintf(outBuf, sizeof(outBuf), "m_low(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
-	case m_high: snprintf(outBuf, sizeof(outBuf), "m_high(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
-	case m_add: snprintf(outBuf, sizeof(outBuf), "m_add(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_sub: snprintf(outBuf, sizeof(outBuf), "m_sub(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_mul: snprintf(outBuf, sizeof(outBuf), "m_mul(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_udiv: snprintf(outBuf, sizeof(outBuf), "m_udiv(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_sdiv: snprintf(outBuf, sizeof(outBuf), "m_sdiv(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_umod: snprintf(outBuf, sizeof(outBuf), "m_umod(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_smod: snprintf(outBuf, sizeof(outBuf), "m_smod(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_or: snprintf(outBuf, sizeof(outBuf), "m_or(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_and: snprintf(outBuf, sizeof(outBuf), "m_and(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_xor: snprintf(outBuf, sizeof(outBuf), "m_xor(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_shl: snprintf(outBuf, sizeof(outBuf), "m_shl(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_shr: snprintf(outBuf, sizeof(outBuf), "m_shr(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_sar: snprintf(outBuf, sizeof(outBuf), "m_sar(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_nop:   snprintf(outBuf, sizeof(outBuf), "m_nop"); break;
+	case m_stx:   snprintf(outBuf, sizeof(outBuf), "m_stx(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_ldx:   snprintf(outBuf, sizeof(outBuf), "m_ldx(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_ldc:   snprintf(outBuf, sizeof(outBuf), "m_ldc(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
+	case m_mov:   snprintf(outBuf, sizeof(outBuf), "m_mov(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
+	case m_neg:   snprintf(outBuf, sizeof(outBuf), "m_neg(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
+	case m_lnot:  snprintf(outBuf, sizeof(outBuf), "m_lnot(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
+	case m_bnot:  snprintf(outBuf, sizeof(outBuf), "m_bnot(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
+	case m_xds:   snprintf(outBuf, sizeof(outBuf), "m_xds(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
+	case m_xdu:   snprintf(outBuf, sizeof(outBuf), "m_xdu(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
+	case m_low:   snprintf(outBuf, sizeof(outBuf), "m_low(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
+	case m_high:  snprintf(outBuf, sizeof(outBuf), "m_high(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
+	case m_add:   snprintf(outBuf, sizeof(outBuf), "m_add(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_sub:   snprintf(outBuf, sizeof(outBuf), "m_sub(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_mul:   snprintf(outBuf, sizeof(outBuf), "m_mul(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_udiv:  snprintf(outBuf, sizeof(outBuf), "m_udiv(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_sdiv:  snprintf(outBuf, sizeof(outBuf), "m_sdiv(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_umod:  snprintf(outBuf, sizeof(outBuf), "m_umod(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_smod:  snprintf(outBuf, sizeof(outBuf), "m_smod(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_or:    snprintf(outBuf, sizeof(outBuf), "m_or(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_and:   snprintf(outBuf, sizeof(outBuf), "m_and(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_xor:   snprintf(outBuf, sizeof(outBuf), "m_xor(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_shl:   snprintf(outBuf, sizeof(outBuf), "m_shl(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_shr:   snprintf(outBuf, sizeof(outBuf), "m_shr(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_sar:   snprintf(outBuf, sizeof(outBuf), "m_sar(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
 	case m_cfadd: snprintf(outBuf, sizeof(outBuf), "m_cfadd(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
 	case m_ofadd: snprintf(outBuf, sizeof(outBuf), "m_ofadd(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
 	case m_cfshl: snprintf(outBuf, sizeof(outBuf), "m_cfshl(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
 	case m_cfshr: snprintf(outBuf, sizeof(outBuf), "m_cfshr(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_sets: snprintf(outBuf, sizeof(outBuf), "m_sets(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
-	case m_seto: snprintf(outBuf, sizeof(outBuf), "m_seto(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_setp: snprintf(outBuf, sizeof(outBuf), "m_setp(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_sets:  snprintf(outBuf, sizeof(outBuf), "m_sets(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
+	case m_seto:  snprintf(outBuf, sizeof(outBuf), "m_seto(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_setp:  snprintf(outBuf, sizeof(outBuf), "m_setp(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
 	case m_setnz: snprintf(outBuf, sizeof(outBuf), "m_setnz(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_setz: snprintf(outBuf, sizeof(outBuf), "m_setz(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_setz:  snprintf(outBuf, sizeof(outBuf), "m_setz(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
 	case m_setae: snprintf(outBuf, sizeof(outBuf), "m_setae(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_setb: snprintf(outBuf, sizeof(outBuf), "m_setb(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_seta: snprintf(outBuf, sizeof(outBuf), "m_seta(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_setb:  snprintf(outBuf, sizeof(outBuf), "m_setb(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_seta:  snprintf(outBuf, sizeof(outBuf), "m_seta(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
 	case m_setbe: snprintf(outBuf, sizeof(outBuf), "m_setbe(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_setg: snprintf(outBuf, sizeof(outBuf), "m_setg(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_setg:  snprintf(outBuf, sizeof(outBuf), "m_setg(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
 	case m_setge: snprintf(outBuf, sizeof(outBuf), "m_setge(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_setl: snprintf(outBuf, sizeof(outBuf), "m_setl(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_setl:  snprintf(outBuf, sizeof(outBuf), "m_setl(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
 	case m_setle: snprintf(outBuf, sizeof(outBuf), "m_setle(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_jcnd: snprintf(outBuf, sizeof(outBuf), "m_jcnd(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
-	case m_jnz: snprintf(outBuf, sizeof(outBuf), "m_jnz(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_jz: snprintf(outBuf, sizeof(outBuf), "m_jz(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_jae: snprintf(outBuf, sizeof(outBuf), "m_jae(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_jb: snprintf(outBuf, sizeof(outBuf), "m_jb(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_ja: snprintf(outBuf, sizeof(outBuf), "m_ja(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_jbe: snprintf(outBuf, sizeof(outBuf), "m_jbe(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_jg: snprintf(outBuf, sizeof(outBuf), "m_jg(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_jge: snprintf(outBuf, sizeof(outBuf), "m_jge(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_jl: snprintf(outBuf, sizeof(outBuf), "m_jl(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_jle: snprintf(outBuf, sizeof(outBuf), "m_jle(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_jtbl: snprintf(outBuf, sizeof(outBuf), "m_jtbl(%s,%s)", moptToString(o->l.t), moptToString(o->r.t)); break;
-	case m_ijmp: snprintf(outBuf, sizeof(outBuf), "m_ijmp(%s,%s)", moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_goto: snprintf(outBuf, sizeof(outBuf), "m_goto(%s)", moptToString(o->l.t)); break;
-	case m_call: snprintf(outBuf, sizeof(outBuf), "m_call(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
+	case m_jcnd:  snprintf(outBuf, sizeof(outBuf), "m_jcnd(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
+	case m_jnz:   snprintf(outBuf, sizeof(outBuf), "m_jnz(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_jz:    snprintf(outBuf, sizeof(outBuf), "m_jz(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_jae:   snprintf(outBuf, sizeof(outBuf), "m_jae(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_jb:    snprintf(outBuf, sizeof(outBuf), "m_jb(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_ja:    snprintf(outBuf, sizeof(outBuf), "m_ja(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_jbe:   snprintf(outBuf, sizeof(outBuf), "m_jbe(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_jg:    snprintf(outBuf, sizeof(outBuf), "m_jg(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_jge:   snprintf(outBuf, sizeof(outBuf), "m_jge(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_jl:    snprintf(outBuf, sizeof(outBuf), "m_jl(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_jle:   snprintf(outBuf, sizeof(outBuf), "m_jle(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_jtbl:  snprintf(outBuf, sizeof(outBuf), "m_jtbl(%s,%s)", moptToString(o->l.t), moptToString(o->r.t)); break;
+	case m_ijmp:  snprintf(outBuf, sizeof(outBuf), "m_ijmp(%s,%s)", moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_goto:  snprintf(outBuf, sizeof(outBuf), "m_goto(%s)", moptToString(o->l.t)); break;
+	case m_call:  snprintf(outBuf, sizeof(outBuf), "m_call(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
 	case m_icall: snprintf(outBuf, sizeof(outBuf), "m_icall(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
-	case m_ret: snprintf(outBuf, sizeof(outBuf), "m_ret"); break;
-	case m_push: snprintf(outBuf, sizeof(outBuf), "m_push(%s)", moptToString(o->l.t)); break;
-	case m_pop: snprintf(outBuf, sizeof(outBuf), "m_pop(%s)", moptToString(o->d.t)); break;
-	case m_und: snprintf(outBuf, sizeof(outBuf), "m_und(%s)", moptToString(o->d.t)); break;
-	case m_ext: snprintf(outBuf, sizeof(outBuf), "m_ext(???)"); break;
-	case m_f2i: snprintf(outBuf, sizeof(outBuf), "m_f2i(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
-	case m_f2u: snprintf(outBuf, sizeof(outBuf), "m_f2u(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
-	case m_i2f: snprintf(outBuf, sizeof(outBuf), "m_i2f(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
-	case m_u2f: snprintf(outBuf, sizeof(outBuf), "m_u2f(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
-	case m_f2f: snprintf(outBuf, sizeof(outBuf), "m_f2f(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
-	case m_fneg: snprintf(outBuf, sizeof(outBuf), "m_fneg(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
-	case m_fadd: snprintf(outBuf, sizeof(outBuf), "m_fadd(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_fsub: snprintf(outBuf, sizeof(outBuf), "m_fsub(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_fmul: snprintf(outBuf, sizeof(outBuf), "m_fmul(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	case m_fdiv: snprintf(outBuf, sizeof(outBuf), "m_fdiv(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
-	default: snprintf(outBuf, sizeof(outBuf), "???");
+	case m_ret:   snprintf(outBuf, sizeof(outBuf), "m_ret"); break;
+	case m_push:  snprintf(outBuf, sizeof(outBuf), "m_push(%s)", moptToString(o->l.t)); break;
+	case m_pop:   snprintf(outBuf, sizeof(outBuf), "m_pop(%s)", moptToString(o->d.t)); break;
+	case m_und:   snprintf(outBuf, sizeof(outBuf), "m_und(%s)", moptToString(o->d.t)); break;
+	case m_ext:   snprintf(outBuf, sizeof(outBuf), "m_ext(???)"); break;
+	case m_f2i:   snprintf(outBuf, sizeof(outBuf), "m_f2i(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
+	case m_f2u:   snprintf(outBuf, sizeof(outBuf), "m_f2u(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
+	case m_i2f:   snprintf(outBuf, sizeof(outBuf), "m_i2f(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
+	case m_u2f:   snprintf(outBuf, sizeof(outBuf), "m_u2f(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
+	case m_f2f:   snprintf(outBuf, sizeof(outBuf), "m_f2f(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
+	case m_fneg:  snprintf(outBuf, sizeof(outBuf), "m_fneg(%s,%s)", moptToString(o->l.t), moptToString(o->d.t)); break;
+	case m_fadd:  snprintf(outBuf, sizeof(outBuf), "m_fadd(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_fsub:  snprintf(outBuf, sizeof(outBuf), "m_fsub(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_fmul:  snprintf(outBuf, sizeof(outBuf), "m_fmul(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	case m_fdiv:  snprintf(outBuf, sizeof(outBuf), "m_fdiv(%s,%s,%s)", moptToString(o->l.t), moptToString(o->r.t), moptToString(o->d.t)); break;
+	default:      snprintf(outBuf, sizeof(outBuf), "m_unknown");
 	}
 
 	return outBuf;
@@ -138,7 +141,15 @@ static bool endsWithCall(mblock_t *blk) {
 	return blk->tail && (blk->tail->opcode == m_call || blk->tail->opcode == m_icall);
 }
 
-// Jump is preceded by instructions setting condition codes, find first of them
+static bool endsWithJcc(mblock_t *blk) {
+	return blk->tail && is_mcode_jcond(blk->tail->opcode);
+}
+
+static bool endsWithGoto(mblock_t *blk) {
+	return blk->tail && blk->tail->opcode == m_goto;
+}
+
+// Conditional jump in LOCOPT phase is preceded by instructions setting condition codes, find first of them
 static minsn_t *getJccRealBegin(minsn_t *jcc) {
 	// TODO: check if subject matches
 	minsn_t *insn = jcc;
@@ -148,6 +159,7 @@ static minsn_t *getJccRealBegin(minsn_t *jcc) {
 	return insn;
 }
 
+// Delete conditional jump and condition flags changes
 static void deleteWholeJcc(mblock_t *blk) {
 	minsn_t *insn = getJccRealBegin(blk->tail);
 	while (insn) {
@@ -158,8 +170,9 @@ static void deleteWholeJcc(mblock_t *blk) {
 	}
 }
 
+// Get target of jump and fallthrough for 2WAY block
 static void getBlockCondExits(mblock_t *block, int& jump, int& fall) {
-	QASSERT(133701, block->nsucc() == 2 && block->tail && is_mcode_jcond(block->tail->opcode) && block->tail->d.t == mop_b);
+	QASSERT(133701, block->nsucc() == 2 && endsWithJcc(block));
 	jump = block->succ(0);
 	fall = block->succ(1);
 	if (jump != block->tail->d.b) {

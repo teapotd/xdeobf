@@ -47,6 +47,15 @@ mblock_t *copyMBlockEmpty(mblock_t *src, int insertBefore) {
 	return dst;
 }
 
+mblock_t *copyMBlock(mblock_t *src, int insertBefore) {
+	mblock_t *dst = copyMBlockEmpty(src, insertBefore);
+	dst->flags |= MBL_FAKE;
+	for (minsn_t *ins = src->head; ins; ins = ins->next) {
+		dst->insert_into_block(new minsn_t(*ins), dst->tail);
+	}
+	return dst;
+}
+
 mblock_t *splitMBlock(mblock_t *src, minsn_t *splitInsn) {
 	mbl_array_t *mba = src->mba;
 	mblock_t *dst = copyMBlockEmpty(src, src->serial);
@@ -78,7 +87,6 @@ mblock_t *splitMBlock(mblock_t *src, minsn_t *splitInsn) {
 
 	src->predset.clear();
 	addMBlockEdge(dst, src);
-	mba->mark_chains_dirty();
 	return dst;
 }
 
@@ -122,4 +130,28 @@ void setMBlockJcc(mblock_t *src, mblock_t *dst) {
 	delMBlockEdge(src, old);
 	addMBlockEdge(src, dst);
 	src->tail->d.b = dst->serial;
+}
+
+bool insertGotoMBlock(mblock_t *after, mblock_t *dst) {
+	if (after->tail && after->tail->opcode == m_goto) {
+		return false; // Inserting this block is useless then
+	}
+
+	delMBlockEdge(after, after->nextb);
+
+	mblock_t *blk = copyMBlockEmpty(after, after->serial + 1);
+	blk->start = after->end - 1;
+	blk->end = after->end;
+	blk->type = BLT_1WAY;
+	blk->flags |= MBL_FAKE;
+
+	minsn_t *ins = new minsn_t(blk->start);
+	ins->opcode = m_goto;
+	ins->l.t = mop_b;
+	ins->l.b = dst->serial;
+	blk->insert_into_block(ins, blk->tail);
+
+	addMBlockEdge(after, blk);
+	addMBlockEdge(blk, dst);
+	return true;
 }

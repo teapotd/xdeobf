@@ -280,8 +280,8 @@ bool Unflattener::normalizeJumpsToDispatcher(mblock_t *blk) {
 		dbg("[I] Normalizing conditional jump for %d\n", blk->serial);
 		setMBlockJcc(blk, dispatcherRoot);
 	} else if (normFall) {
-		msg("[E] Unsupported normalization for %d\n", blk->serial);
-		return false;
+		dbg("[I] Normalizing fallthrough for %d\n", blk->serial);
+		insertGotoMBlock(blk, dispatcherRoot);
 	}
 
 	return true;

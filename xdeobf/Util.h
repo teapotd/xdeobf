@@ -128,10 +128,14 @@ static qstring minsnToString(minsn_t *o) {
 }
 
 static void dumpMbaToFile(mbl_array_t *mba, const char *path) {
-	FILE *file = qfopen(path, "a");
+	FILE *file = qfopen(path, "w");
 	file_printer_t printer(file);
 	mba->print(printer);
 	qfclose(file);
+}
+
+static bool endsWithCall(mblock_t *blk) {
+	return blk->tail && (blk->tail->opcode == m_call || blk->tail->opcode == m_icall);
 }
 
 // Jump is preceded by instructions setting condition codes, find first of them

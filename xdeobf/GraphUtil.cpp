@@ -135,9 +135,9 @@ void setBlockJcc(mblock_t *src, mblock_t *dst) {
 }
 
 // Insert block with a single goto after specified block
-bool insertGotoBlock(mblock_t *after, mblock_t *dst) {
+mblock_t *insertGotoBlock(mblock_t *after, mblock_t *dst) {
 	if (endsWithGoto(after)) {
-		return false; // Inserting this block is useless then
+		return nullptr; // Inserting this block is useless then
 	}
 
 	removeEdge(after, after->nextb);
@@ -156,5 +156,5 @@ bool insertGotoBlock(mblock_t *after, mblock_t *dst) {
 
 	addEdge(after, blk);
 	addEdge(blk, dst);
-	return true;
+	return blk;
 }

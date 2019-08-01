@@ -171,11 +171,11 @@ static void deleteWholeJcc(mblock_t *blk) {
 }
 
 // Get target of jump and fallthrough for 2WAY block
-static void getBlockCondExits(mblock_t *block, int& jump, int& fall) {
+static void getBlockCondExits(mblock_t *block, mblock_t *&jump, mblock_t *&fall) {
 	QASSERT(133701, block->nsucc() == 2 && endsWithJcc(block));
-	jump = block->succ(0);
-	fall = block->succ(1);
-	if (jump != block->tail->d.b) {
+	jump = block->mba->get_mblock(block->succ(0));
+	fall = block->mba->get_mblock(block->succ(1));
+	if (jump->serial != block->tail->d.b) {
 		std::swap(jump, fall);
 	}
 }

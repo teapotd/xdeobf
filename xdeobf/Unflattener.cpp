@@ -32,6 +32,9 @@ bool Unflattener::performSwitchReconstruction() {
 	if (!normalizeJumpsToDispatcher()) {
 		return false;
 	}
+	if (!copyCommonBlocks()) {
+		return false;
+	}
 	if (!createSwitch()) {
 		return false;
 	}
@@ -188,22 +191,22 @@ bool Unflattener::processDispatcherSubgraph() {
 			}
 
 			uint32 cmp = (uint32)tail->r.nnn->value;
-			int jump, fall;
+			mblock_t *jump, *fall;
 			getBlockCondExits(blk, jump, fall);
 
 			if (tail->opcode == m_jz) {
-				que.push(fall);
-				if (!addCase(cmp, mba->get_mblock(jump))) {
+				que.push(fall->serial);
+				if (!addCase(cmp, jump)) {
 					return false;
 				}
 			} else if (tail->opcode == m_jnz) {
-				que.push(jump);
-				if (!addCase(cmp, mba->get_mblock(fall))) {
+				que.push(jump->serial);
+				if (!addCase(cmp, fall)) {
 					return false;
 				}
 			} else {
-				que.push(jump);
-				que.push(fall);
+				que.push(jump->serial);
+				que.push(fall->serial);
 			}
 		} else if (blk->nsucc() == 1) {
 			que.push(blk->succ(0));
@@ -258,7 +261,7 @@ bool Unflattener::normalizeJumpsToDispatcher(mblock_t *blk) {
 	}
 
 	if (blk->nsucc() == 1) {
-		if (shouldNormalize(blk->succ(0))) {
+		if (shouldNormalize(mba->get_mblock(blk->succ(0)))) {
 			dbg("[I] Normalizing goto for %d\n", blk->serial);
 			forceBlockGoto(blk, dispatcherRoot);
 		}
@@ -269,7 +272,7 @@ bool Unflattener::normalizeJumpsToDispatcher(mblock_t *blk) {
 		return true;
 	}
 
-	int jump, fall;
+	mblock_t *jump, *fall;
 	getBlockCondExits(blk, jump, fall);
 
 	bool normJump = shouldNormalize(jump);
@@ -294,14 +297,107 @@ bool Unflattener::normalizeJumpsToDispatcher(mblock_t *blk) {
 	return true;
 }
 
-bool Unflattener::shouldNormalize(int id) {
-	mblock_t *blk = mba->get_mblock(id);
+bool Unflattener::shouldNormalize(mblock_t *blk) {
 	return blk != dispatcherRoot && dispatcherBlocks.count(skipGotos(blk));
 }
 
-bool Unflattener::canNormalize(int id) {
-	mblock_t *blk = mba->get_mblock(id);
+bool Unflattener::canNormalize(mblock_t *blk) {
 	return dispatcherBlocks.count(skipGotos(blk));
+}
+
+// Different cases may have common blocks what confuses decompiler. Make them unique by copying.
+bool Unflattener::copyCommonBlocks() {
+	std::set<mblock_t*> used;
+	for (auto &entry : keyToTarget) {
+		if (!copyCommonBlocks(used, entry.second)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+bool Unflattener::copyCommonBlocks(std::set<mblock_t*> &used, mblock_t *root) {
+	if (used.count(root)) {
+		msg("[W] Multiple keys pointing to block %d\n", root->serial);
+		return true;
+	}
+
+	std::set<mblock_t*> blocks;
+	std::queue<int> que;
+	que.push(root->serial);
+
+	while (!que.empty()) {
+		int id = que.front();
+		mblock_t *blk = mba->get_mblock(id);
+		que.pop();
+
+		if (id == mba->qty-1 || dispatcherBlocks.count(blk)) {
+			continue;
+		}
+
+		if (blk->nsucc() > 2) {
+			msg("[W] Switches are currently unsupported (id: %d)\n", root->serial);
+			return true;
+		}
+
+		if (blocks.insert(blk).second) {
+			for (int succ : blk->succset) {
+				que.push(succ);
+			}
+		}
+	}
+
+	std::map<mblock_t*, mblock_t*> oldToNew;
+
+	auto mapBlock = [&](mblock_t *blk) {
+		auto iter = oldToNew.find(blk);
+		return iter != oldToNew.end() ? iter->second : blk;
+	};
+
+	for (mblock_t *block : blocks) {
+		if (used.insert(block).second) {
+			continue; // No need to copy
+		}
+
+		if (endsWithCall(block)) {
+			msg("[W] Common block %d ends with call\n", block->serial);
+			continue; // Messing with calls is not fun
+		}
+
+		if (oldToNew.empty()) {
+			// Add goto STOP before our copies, so we don't break anything
+			insertGotoBlock(mba->get_mblock(mba->qty-2), mba->get_mblock(mba->qty-1));
+		}
+
+		mblock_t *copy = copyBlock(block, mba->qty - 1);
+		oldToNew[block] = copy;
+		used.insert(copy);
+	}
+
+	if (oldToNew.empty()) {
+		return true;
+	}
+
+	for (mblock_t *block : blocks) {
+		mblock_t *mapped = mapBlock(block);
+
+		if (block->nsucc() == 1) {
+			mblock_t *dst = mapBlock(mba->get_mblock(block->succ(0)));
+			if (endsWithCall(mapped)) {
+				used.insert(insertGotoBlock(mapped, dst));
+			} else {
+				forceBlockGoto(mapped, dst);
+			}
+		} else if (block->nsucc() == 2) {
+			mblock_t *jump, *fall;
+			getBlockCondExits(block, jump, fall);
+			used.insert(insertGotoBlock(mapped, mapBlock(fall)));
+			setBlockJcc(mapped, mapBlock(jump));
+		}
+	}
+
+	dbg("[I] Copied %lu common blocks for subgraph of %d\n", oldToNew.size(), root->serial);
+	return true;
 }
 
 // Finally, change dispatcher root into NWAY block (a switch)

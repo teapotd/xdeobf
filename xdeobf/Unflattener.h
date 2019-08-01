@@ -8,11 +8,13 @@ struct Unflattener : public optblock_t {
 	bool processDispatcherSubgraph();
 	bool normalizeJumpsToDispatcher();
 	bool normalizeJumpsToDispatcher(mblock_t *blk);
+	bool copyCommonBlocks();
+	bool copyCommonBlocks(std::set<mblock_t*> &used, mblock_t *root);
 	bool createSwitch();
 
 	bool addCase(uint32 key, mblock_t *dst);
-	bool shouldNormalize(int blk);
-	bool canNormalize(int blk);
+	bool shouldNormalize(mblock_t *blk);
+	bool canNormalize(mblock_t *blk);
 
 	mbl_array_t *mba;
 	mba_maturity_t maturity = MMAT_ZERO;

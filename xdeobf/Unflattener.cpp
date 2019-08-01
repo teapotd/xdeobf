@@ -37,6 +37,7 @@ bool Unflattener::performSwitchReconstruction() {
 	mba->mark_chains_dirty();
 	dumpMbaToFile(mba, "C:\\Users\\teapot\\Desktop\\mba_dump\\done.txt");
 	mba->verify(true);
+	dbg("[I] Verification passed\n");
 	return true;
 }
 
@@ -156,7 +157,7 @@ bool Unflattener::processDispatcherSubgraph() {
 	std::queue<int> que;
 	que.push(dispatcherRoot->serial);
 	dispatcherBlocks.clear();
-	entries.clear();
+	keyToTarget.clear();
 
 	while (!que.empty()) {
 		int id = que.front();
@@ -187,10 +188,14 @@ bool Unflattener::processDispatcherSubgraph() {
 
 			if (tail->opcode == m_jz) {
 				que.push(fall);
-				entries[cmp] = mba->get_mblock(jump);
+				if (!mapTarget(cmp, mba->get_mblock(jump))) {
+					return false;
+				}
 			} else if (tail->opcode == m_jnz) {
 				que.push(jump);
-				entries[cmp] = mba->get_mblock(fall);
+				if (!mapTarget(cmp, mba->get_mblock(fall))) {
+					return false;
+				}
 			} else {
 				que.push(jump);
 				que.push(fall);
@@ -200,6 +205,17 @@ bool Unflattener::processDispatcherSubgraph() {
 		}
 	}
 
+	dbg("[I] Found %lu dispatcher blocks and %lu dispatcher exit points\n", dispatcherBlocks.size(), keyToTarget.size());
+	return true;
+}
+
+bool Unflattener::mapTarget(uint32 key, mblock_t *dst) {
+	auto &elem = keyToTarget[key];
+	if (elem) {
+		msg("[E] Key %u has more than one target blocks (%d, %d)\n", elem->serial, dst->serial);
+		return false;
+	}
+	elem = dst;
 	return true;
 }
 
@@ -282,24 +298,23 @@ bool Unflattener::canNormalize(int id) {
 }
 
 bool Unflattener::createSwitch() {
+	std::map<mblock_t*, svalvec_t> targetsToKeys;
+	for (auto &entry : keyToTarget) {
+		targetsToKeys[entry.second].push_back(entry.first);
+	}
+	targetsToKeys[mba->get_mblock(mba->qty - 1)] = {}; // default branch
+
 	minsn_t *jtbl = new minsn_t(dispatcherRoot->tail->ea);
 	delMBlockAllOutgoing(dispatcherRoot);
 	deleteWholeJcc(dispatcherRoot);
 	dispatcherRoot->type = BLT_NWAY;
 
 	mcases_t *cases = new mcases_t();
-	cases->resize(int(entries.size())+1);
-	int i = 0;
-
-	for (auto& entry : entries) {
-		addMBlockEdge(dispatcherRoot, entry.second);
-		cases->values[i].push_back(entry.first);
-		cases->targets[i] = entry.second->serial;
-		i++;
+	for (auto &entry : targetsToKeys) {
+		addMBlockEdge(dispatcherRoot, entry.first);
+		cases->targets.push_back(entry.first->serial);
+		cases->values.push_back(entry.second);
 	}
-
-	cases->targets[i] = mba->qty-1;
-	addMBlockEdge(dispatcherRoot, mba->get_mblock(mba->qty-1));
 
 	jtbl->opcode = m_jtbl;
 	jtbl->l.t = mop_r;
@@ -309,5 +324,6 @@ bool Unflattener::createSwitch() {
 	jtbl->r.c = cases;
 
 	dispatcherRoot->insert_into_block(jtbl, dispatcherRoot->tail);
+	dbg("[I] Switch created\n");
 	return true;
 }

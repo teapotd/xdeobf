@@ -10,6 +10,7 @@ struct Unflattener : public optblock_t {
 	bool normalizeJumpsToDispatcher(mblock_t *blk);
 	bool createSwitch();
 
+	bool mapTarget(uint32 key, mblock_t *dst);
 	bool shouldNormalize(int blk);
 	bool canNormalize(int blk);
 
@@ -18,5 +19,5 @@ struct Unflattener : public optblock_t {
 	mreg_t dispatcherVar = mr_none;
 	mblock_t *dispatcherRoot = nullptr;
 	std::set<mblock_t*> dispatcherBlocks;
-	std::map<uint32, mblock_t*> entries;
+	std::map<uint32, mblock_t*> keyToTarget;
 };

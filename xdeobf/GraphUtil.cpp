@@ -158,3 +158,13 @@ mblock_t *insertGotoBlock(mblock_t *after, mblock_t *dst) {
 	addEdge(blk, dst);
 	return blk;
 }
+
+// Apparently Hexrays requires fallthrough to be the first succesor
+void fixSuccesorsOrder(mbl_array_t* mba) {
+	for (int i = 0; i < mba->qty; i++) {
+		mblock_t *block = mba->get_mblock(i);
+		if (block->nsucc() == 2 && endsWithJcc(block) && block->tail->d.b != block->succ(1)) {
+			std::swap(block->succset[0], block->succset[1]);
+		}
+	}
+}

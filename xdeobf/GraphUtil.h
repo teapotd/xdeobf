@@ -10,3 +10,4 @@ mblock_t *skipGotos(mblock_t *blk);
 void forceBlockGoto(mblock_t *src, mblock_t *dst);
 void setBlockJcc(mblock_t *src, mblock_t *dst);
 mblock_t *insertGotoBlock(mblock_t *after, mblock_t *dst);
+void fixSuccesorsOrder(mbl_array_t* mba);

@@ -13,6 +13,10 @@ int Unflattener::func(mblock_t *blk) {
 
 	if (maturity == MMAT_LOCOPT) {
 		performSwitchReconstruction();
+		fixSuccesorsOrder(mba);
+		mba->mark_chains_dirty();
+		dumpMbaToFile(mba, "C:\\Users\\teapot\\Desktop\\mba_dump\\done.txt");
+		mba->verify(true);
 		return 1;
 	}
 	return 0;
@@ -38,11 +42,6 @@ bool Unflattener::performSwitchReconstruction() {
 	if (!createSwitch()) {
 		return false;
 	}
-
-	mba->mark_chains_dirty();
-	dumpMbaToFile(mba, "C:\\Users\\teapot\\Desktop\\mba_dump\\done.txt");
-	mba->verify(true);
-	dbg("[I] Verification passed\n");
 	return true;
 }
 

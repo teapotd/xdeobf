@@ -14,10 +14,33 @@ void addEdge(mblock_t *src, mblock_t *dst) {
 	dst->mark_lists_dirty();
 }
 
-void removeAllOutgoingEdges(mblock_t *blk) {
-	while (blk->nsucc() > 0) {
-		mblock_t *other = blk->mba->get_mblock(blk->succ(0));
-		removeEdge(blk, other);
+void recalculateSuccesors(mblock_t *block) {
+	mbl_array_t *mba = block->mba;
+
+	while (block->nsucc() > 0) {
+		mblock_t *other = block->mba->get_mblock(block->succ(0));
+		removeEdge(block, other);
+	}
+
+	if (block->type == BLT_1WAY) {
+		if (endsWithGoto(block)) {
+			if (block->tail->l.t == mop_b) {
+				addEdge(block, mba->get_mblock(block->tail->l.b));
+			}
+		} else {
+			addEdge(block, block->nextb);
+		}
+	} else if (block->type == BLT_2WAY) {
+		QASSERT(133700, endsWithJcc(block));
+		addEdge(block, block->nextb);
+		if (block->tail->d.t == mop_b) {
+			addEdge(block, mba->get_mblock(block->tail->d.b));
+		}
+	} else if (block->type == BLT_NWAY) {
+		QASSERT(133701, block->tail && block->tail->opcode == m_jtbl && block->tail->r.t == mop_c);
+		for (int dst : block->tail->r.c->targets) {
+			addEdge(block, mba->get_mblock(dst));
+		}
 	}
 }
 
@@ -75,19 +98,16 @@ mblock_t *splitBlock(mblock_t *src, minsn_t *splitInsn) {
 
 	for (int in : src->predset) {
 		mblock_t *inBlock = mba->get_mblock(in);
-
-		inBlock->succset.del(src->serial);
-		addEdge(inBlock, dst);
-
-		if (endsWithGoto(inBlock)) {
+		if (endsWithGoto(inBlock) && inBlock->tail->l.t == mop_b) {
 			inBlock->tail->l.b = dst->serial;
-		} else if (endsWithJcc(inBlock) && inBlock->tail->d.b == src->serial) {
+		} else if (endsWithJcc(inBlock) && inBlock->tail->d.t == mop_b && inBlock->tail->d.b == src->serial) {
 			inBlock->tail->d.b = dst->serial;
 		}
+		recalculateSuccesors(inBlock);
 	}
 
-	src->predset.clear();
-	addEdge(dst, src);
+	recalculateSuccesors(src);
+	recalculateSuccesors(dst);
 	return dst;
 }
 
@@ -104,14 +124,12 @@ mblock_t *skipGotos(mblock_t *blk) {
 
 // Set block to 1WAY and add/change goto to specified dst
 void forceBlockGoto(mblock_t *src, mblock_t *dst) {
-	removeAllOutgoingEdges(src);
-	addEdge(src, dst);
-
 	if (endsWithJcc(src)) {
 		deleteWholeJcc(src);
 	}
 
 	if (endsWithGoto(src)) {
+		src->tail->l.t = mop_b;
 		src->tail->l.b = dst->serial;
 	} else {
 		minsn_t *ins = new minsn_t(src->end);
@@ -122,16 +140,14 @@ void forceBlockGoto(mblock_t *src, mblock_t *dst) {
 	}
 
 	src->type = BLT_1WAY;
+	recalculateSuccesors(src);
 }
 
 void setBlockJcc(mblock_t *src, mblock_t *dst) {
 	QASSERT(133702, endsWithJcc(src));
-	mbl_array_t *mba = src->mba;
-	mblock_t *old = mba->get_mblock(src->tail->d.b);
-
-	removeEdge(src, old);
-	addEdge(src, dst);
+	src->tail->d.t = mop_b;
 	src->tail->d.b = dst->serial;
+	recalculateSuccesors(src);
 }
 
 // Insert block with a single goto after specified block
@@ -139,8 +155,6 @@ mblock_t *insertGotoBlock(mblock_t *after, mblock_t *dst) {
 	if (endsWithGoto(after)) {
 		return nullptr; // Inserting this block is useless then
 	}
-
-	removeEdge(after, after->nextb);
 
 	mblock_t *blk = copyBlockEmpty(after, after->serial + 1);
 	blk->start = after->end - 1;
@@ -154,17 +168,7 @@ mblock_t *insertGotoBlock(mblock_t *after, mblock_t *dst) {
 	ins->l.b = dst->serial;
 	blk->insert_into_block(ins, blk->tail);
 
-	addEdge(after, blk);
-	addEdge(blk, dst);
+	recalculateSuccesors(after);
+	recalculateSuccesors(blk);
 	return blk;
-}
-
-// Apparently Hexrays requires fallthrough to be the first succesor
-void fixSuccesorsOrder(mbl_array_t* mba) {
-	for (int i = 0; i < mba->qty; i++) {
-		mblock_t *block = mba->get_mblock(i);
-		if (block->nsucc() == 2 && endsWithJcc(block) && block->tail->d.b != block->succ(1)) {
-			std::swap(block->succset[0], block->succset[1]);
-		}
-	}
 }

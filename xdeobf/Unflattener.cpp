@@ -13,7 +13,6 @@ int Unflattener::func(mblock_t *blk) {
 
 	if (maturity == MMAT_LOCOPT) {
 		performSwitchReconstruction();
-		fixSuccesorsOrder(mba);
 		mba->mark_chains_dirty();
 		dumpMbaToFile(mba, "C:\\Users\\teapot\\Desktop\\mba_dump\\done.txt");
 		mba->verify(true);
@@ -180,18 +179,18 @@ bool Unflattener::processDispatcherSubgraph() {
 			return false;
 		}
 
+		mblock_t *jump, *fall;
 		minsn_t *tail = blk->tail;
+
 		// TODO: verify if block doesn't do anything else
 
-		if (endsWithJcc(blk)) {
+		if (getBlockCondExits(blk, jump, fall)) {
 			if (!tail->l.is_reg() || tail->l.r != dispatcherVar || tail->r.t != mop_n) {
 				dbg("[E] Unexpected conditional at dispatcher block (id: %d)\n", id);
 				return false;
 			}
 
 			uint32 cmp = (uint32)tail->r.nnn->value;
-			mblock_t *jump, *fall;
-			getBlockCondExits(blk, jump, fall);
 
 			if (tail->opcode == m_jz) {
 				que.push(fall->serial);
@@ -266,13 +265,11 @@ bool Unflattener::normalizeJumpsToDispatcher(mblock_t *blk) {
 		}
 		return true;
 	}
-
-	if (blk->nsucc() != 2) {
+	
+	mblock_t *jump, *fall;
+	if (!getBlockCondExits(blk, jump, fall)) {
 		return true;
 	}
-
-	mblock_t *jump, *fall;
-	getBlockCondExits(blk, jump, fall);
 
 	bool normJump = shouldNormalize(jump);
 	bool normFall = shouldNormalize(fall);
@@ -387,6 +384,7 @@ bool Unflattener::copyCommonBlocks(std::set<mblock_t*> &used, mblock_t *root) {
 
 	for (mblock_t *block : blocks) {
 		mblock_t *mapped = mapBlock(block);
+		mblock_t *jump, *fall;
 
 		if (block->nsucc() == 1) {
 			mblock_t *dst = mapBlock(mba->get_mblock(block->succ(0)));
@@ -395,9 +393,7 @@ bool Unflattener::copyCommonBlocks(std::set<mblock_t*> &used, mblock_t *root) {
 			} else {
 				forceBlockGoto(mapped, dst);
 			}
-		} else if (block->nsucc() == 2) {
-			mblock_t *jump, *fall;
-			getBlockCondExits(block, jump, fall);
+		} else if (getBlockCondExits(block, jump, fall)) {
 			used.insert(insertGotoBlock(mapped, mapBlock(fall)));
 			setBlockJcc(mapped, mapBlock(jump));
 		}
@@ -415,18 +411,13 @@ bool Unflattener::createSwitch() {
 	}
 	targetsToKeys[mba->get_mblock(mba->qty - 1)] = {}; // default branch
 
-	minsn_t *jtbl = new minsn_t(dispatcherRoot->tail->ea);
-	removeAllOutgoingEdges(dispatcherRoot);
-	deleteWholeJcc(dispatcherRoot);
-	dispatcherRoot->type = BLT_NWAY;
-
 	mcases_t *cases = new mcases_t();
 	for (auto &entry : targetsToKeys) {
-		addEdge(dispatcherRoot, entry.first);
 		cases->targets.push_back(entry.first->serial);
 		cases->values.push_back(entry.second);
 	}
 
+	minsn_t *jtbl = new minsn_t(dispatcherRoot->tail->ea);
 	jtbl->opcode = m_jtbl;
 	jtbl->l.t = mop_r;
 	jtbl->l.r = dispatcherVar;
@@ -434,7 +425,10 @@ bool Unflattener::createSwitch() {
 	jtbl->r.t = mop_c;
 	jtbl->r.c = cases;
 
+	dispatcherRoot->type = BLT_NWAY;
+	deleteWholeJcc(dispatcherRoot);
 	dispatcherRoot->insert_into_block(jtbl, dispatcherRoot->tail);
+	recalculateSuccesors(dispatcherRoot);
 	dbg("[I] Switch created\n");
 	return true;
 }

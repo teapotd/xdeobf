@@ -171,12 +171,11 @@ static void deleteWholeJcc(mblock_t *blk) {
 }
 
 // Get target of jump and fallthrough for 2WAY block
-// Seems like Hexrays enforces fallthrough to be the first succesor, but we don't rely on it
-static void getBlockCondExits(mblock_t *block, mblock_t *&jump, mblock_t *&fall) {
-	QASSERT(133701, block->nsucc() == 2 && endsWithJcc(block));
-	fall = block->mba->get_mblock(block->succ(0));
-	jump = block->mba->get_mblock(block->succ(1));
-	if (jump->serial != block->tail->d.b) {
-		std::swap(jump, fall);
+static bool getBlockCondExits(mblock_t *block, mblock_t *&jump, mblock_t *&fall) {
+	if (endsWithJcc(block) && block->tail->d.t == mop_b && block->nsucc() == 2) {
+		jump = block->mba->get_mblock(block->tail->d.b);
+		fall = block->nextb;
+		return true;
 	}
+	return false;
 }

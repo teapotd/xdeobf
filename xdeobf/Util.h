@@ -144,6 +144,16 @@ static minsn_t *getJccRealBegin(minsn_t *jcc) {
 	return insn;
 }
 
+static void deleteWholeJcc(mblock_t *blk) {
+	minsn_t *insn = getJccRealBegin(blk->tail);
+	while (insn) {
+		minsn_t *next = insn->next;
+		blk->remove_from_block(insn);
+		delete insn;
+		insn = next;
+	}
+}
+
 static void getBlockCondExits(mblock_t *block, int& jump, int& fall) {
 	QASSERT(133701, block->nsucc() == 2 && block->tail && is_mcode_jcond(block->tail->opcode) && block->tail->d.t == mop_b);
 	jump = block->succ(0);

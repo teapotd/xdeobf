@@ -8,6 +8,7 @@ struct Unflattener : public optblock_t {
 	bool processDispatcherSubgraph();
 	bool normalizeJumpsToDispatcher();
 	bool normalizeJumpsToDispatcher(mblock_t *blk);
+	bool createSwitch();
 
 	bool shouldNormalize(int blk);
 

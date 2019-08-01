@@ -3,11 +3,22 @@
 void delMBlockEdge(mblock_t *src, mblock_t *dst) {
 	src->succset.del(dst->serial);
 	dst->predset.del(src->serial);
+	src->mark_lists_dirty();
+	dst->mark_lists_dirty();
 }
 
 void addMBlockEdge(mblock_t *src, mblock_t *dst) {
 	src->succset.add(dst->serial);
 	dst->predset.add(src->serial);
+	src->mark_lists_dirty();
+	dst->mark_lists_dirty();
+}
+
+void delMBlockAllOutgoing(mblock_t *blk) {
+	while (blk->nsucc() > 0) {
+		mblock_t *other = blk->mba->get_mblock(blk->succ(0));
+		delMBlockEdge(blk, other);
+	}
 }
 
 mblock_t *copyMBlockEmpty(mblock_t *src, int insertBefore) {
@@ -63,15 +74,10 @@ mblock_t *splitMBlock(mblock_t *src, minsn_t *splitInsn) {
 				inBlock->tail->d.b = dst->serial;
 			}
 		}
-
-		inBlock->mark_lists_dirty();
 	}
 
 	src->predset.clear();
 	addMBlockEdge(dst, src);
-
-	src->mark_lists_dirty();
-	dst->mark_lists_dirty();
 	mba->mark_chains_dirty();
 	return dst;
 }
@@ -87,24 +93,11 @@ mblock_t *skipGotos(mblock_t *blk) {
 }
 
 void forceMBlockGoto(mblock_t *src, mblock_t *dst) {
-	mbl_array_t *mba = src->mba;
-
-	while (src->nsucc() > 0) {
-		mblock_t *other = mba->get_mblock(src->succ(0));
-		delMBlockEdge(src, other);
-		other->mark_lists_dirty();
-	}
-
+	delMBlockAllOutgoing(src);
 	addMBlockEdge(src, dst);
 
 	if (src->tail && is_mcode_jcond(src->tail->opcode)) {
-		minsn_t *insn = getJccRealBegin(src->tail);
-		while (insn) {
-			minsn_t *next = insn->next;
-			src->remove_from_block(insn);
-			delete insn;
-			insn = next;
-		}
+		deleteWholeJcc(src);
 	}
 
 	if (!src->tail || src->tail->opcode != m_goto) {
@@ -118,8 +111,6 @@ void forceMBlockGoto(mblock_t *src, mblock_t *dst) {
 	}
 
 	src->type = BLT_1WAY;
-	src->mark_lists_dirty();
-	dst->mark_lists_dirty();
 }
 
 void setMBlockJcc(mblock_t *src, mblock_t *dst) {
@@ -131,8 +122,4 @@ void setMBlockJcc(mblock_t *src, mblock_t *dst) {
 	delMBlockEdge(src, old);
 	addMBlockEdge(src, dst);
 	src->tail->d.b = dst->serial;
-
-	src->mark_lists_dirty();
-	dst->mark_lists_dirty();
-	old->mark_lists_dirty();
 }

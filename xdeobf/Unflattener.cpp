@@ -30,6 +30,9 @@ bool Unflattener::performSwitchReconstruction() {
 	if (!normalizeJumpsToDispatcher()) {
 		return false;
 	}
+	if (!createSwitch()) {
+		return false;
+	}
 
 	dumpMbaToFile(mba, "C:\\Users\\teapot\\Desktop\\mba_dump\\done.txt");
 	mba->verify(true);
@@ -268,4 +271,35 @@ bool Unflattener::normalizeJumpsToDispatcher(mblock_t *blk) {
 bool Unflattener::shouldNormalize(int id) {
 	mblock_t *blk = mba->get_mblock(id);
 	return blk != dispatcherRoot && dispatcherBlocks.count(skipGotos(blk)->serial);
+}
+
+bool Unflattener::createSwitch() {
+	minsn_t *jtbl = new minsn_t(dispatcherRoot->tail->ea);
+	delMBlockAllOutgoing(dispatcherRoot);
+	deleteWholeJcc(dispatcherRoot);
+	dispatcherRoot->type = BLT_NWAY;
+
+	mcases_t *cases = new mcases_t();
+	cases->resize(entries.size()+1);
+	int i = 0;
+
+	for (auto& entry : entries) {
+		addMBlockEdge(dispatcherRoot, mba->get_mblock(entry.second));
+		cases->values[i].push_back(entry.first);
+		cases->targets[i] = entry.second;
+		i++;
+	}
+
+	cases->targets[i] = mba->qty-1;
+	addMBlockEdge(dispatcherRoot, mba->get_mblock(mba->qty-1));
+
+	jtbl->opcode = m_jtbl;
+	jtbl->l.t = mop_r;
+	jtbl->l.r = dispatcherVar;
+	jtbl->l.size = 4;
+	jtbl->r.t = mop_c;
+	jtbl->r.c = cases;
+
+	dispatcherRoot->insert_into_block(jtbl, dispatcherRoot->tail);
+	return true;
 }

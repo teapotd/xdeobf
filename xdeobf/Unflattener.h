@@ -16,6 +16,6 @@ struct Unflattener : public optblock_t {
 	mba_maturity_t maturity = MMAT_ZERO;
 	mreg_t dispatcherVar = mr_none;
 	mblock_t *dispatcherRoot = nullptr;
-	std::set<int> dispatcherBlocks;
-	std::map<uint32, int> entries;
+	std::set<mblock_t*> dispatcherBlocks;
+	std::map<uint32, mblock_t*> entries;
 };

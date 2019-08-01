@@ -34,6 +34,7 @@ bool Unflattener::performSwitchReconstruction() {
 		return false;
 	}
 
+	mba->mark_chains_dirty();
 	dumpMbaToFile(mba, "C:\\Users\\teapot\\Desktop\\mba_dump\\done.txt");
 	mba->verify(true);
 	return true;
@@ -159,13 +160,12 @@ bool Unflattener::processDispatcherSubgraph() {
 
 	while (!que.empty()) {
 		int id = que.front();
+		mblock_t *blk = mba->get_mblock(id);
 		que.pop();
 
-		if (!dispatcherBlocks.insert(id).second) {
+		if (!dispatcherBlocks.insert(blk).second) {
 			continue;
 		}
-
-		mblock_t *blk = mba->get_mblock(id);
 
 		if (blk->nsucc() > 2) {
 			dbg("[E] Dispatcher block with more than 2 succesors (id: %d)\n", id);
@@ -187,10 +187,10 @@ bool Unflattener::processDispatcherSubgraph() {
 
 			if (tail->opcode == m_jz) {
 				que.push(fall);
-				entries[cmp] = jump;
+				entries[cmp] = mba->get_mblock(jump);
 			} else if (tail->opcode == m_jnz) {
 				que.push(jump);
-				entries[cmp] = fall;
+				entries[cmp] = mba->get_mblock(fall);
 			} else {
 				que.push(jump);
 				que.push(fall);
@@ -212,15 +212,13 @@ bool Unflattener::normalizeJumpsToDispatcher() {
 
 	bool ok = true;
 
-	for (int id : dispatcherBlocks) {
-		if (id == dispatcherRoot->serial) {
+	for (mblock_t *blk : dispatcherBlocks) {
+		if (blk == dispatcherRoot) {
 			continue;
 		}
 
-		mblock_t *blk = mba->get_mblock(id);
-
 		for (int in : blk->predset) {
-			if (!dispatcherBlocks.count(in)) {
+			if (!dispatcherBlocks.count(mba->get_mblock(in))) {
 				msg("[E] Internal dispatcher block %d still has references from outside\n", blk->serial);
 				ok = false;
 				break;
@@ -232,7 +230,7 @@ bool Unflattener::normalizeJumpsToDispatcher() {
 }
 
 bool Unflattener::normalizeJumpsToDispatcher(mblock_t *blk) {
-	if (dispatcherBlocks.count(blk->serial)) {
+	if (dispatcherBlocks.count(blk)) {
 		return true;
 	}
 
@@ -270,7 +268,7 @@ bool Unflattener::normalizeJumpsToDispatcher(mblock_t *blk) {
 
 bool Unflattener::shouldNormalize(int id) {
 	mblock_t *blk = mba->get_mblock(id);
-	return blk != dispatcherRoot && dispatcherBlocks.count(skipGotos(blk)->serial);
+	return blk != dispatcherRoot && dispatcherBlocks.count(skipGotos(blk));
 }
 
 bool Unflattener::createSwitch() {
@@ -280,13 +278,13 @@ bool Unflattener::createSwitch() {
 	dispatcherRoot->type = BLT_NWAY;
 
 	mcases_t *cases = new mcases_t();
-	cases->resize(entries.size()+1);
+	cases->resize(int(entries.size())+1);
 	int i = 0;
 
 	for (auto& entry : entries) {
-		addMBlockEdge(dispatcherRoot, mba->get_mblock(entry.second));
+		addMBlockEdge(dispatcherRoot, entry.second);
 		cases->values[i].push_back(entry.first);
-		cases->targets[i] = entry.second;
+		cases->targets[i] = entry.second->serial;
 		i++;
 	}
 

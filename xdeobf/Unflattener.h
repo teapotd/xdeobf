@@ -11,6 +11,7 @@ struct Unflattener : public optblock_t {
 	bool createSwitch();
 
 	bool shouldNormalize(int blk);
+	bool canNormalize(int blk);
 
 	mbl_array_t *mba;
 	mba_maturity_t maturity = MMAT_ZERO;

@@ -252,6 +252,11 @@ bool Unflattener::normalizeJumpsToDispatcher(mblock_t *blk) {
 	bool normJump = shouldNormalize(jump);
 	bool normFall = shouldNormalize(fall);
 
+	if (normJump || normFall) {
+		normJump = canNormalize(jump);
+		normFall = canNormalize(jump);
+	}
+
 	if (normJump && normFall) {
 		dbg("[I] Changing conditional into goto for %d\n", blk->serial);
 		forceMBlockGoto(blk, dispatcherRoot);
@@ -269,6 +274,11 @@ bool Unflattener::normalizeJumpsToDispatcher(mblock_t *blk) {
 bool Unflattener::shouldNormalize(int id) {
 	mblock_t *blk = mba->get_mblock(id);
 	return blk != dispatcherRoot && dispatcherBlocks.count(skipGotos(blk));
+}
+
+bool Unflattener::canNormalize(int id) {
+	mblock_t *blk = mba->get_mblock(id);
+	return dispatcherBlocks.count(skipGotos(blk));
 }
 
 bool Unflattener::createSwitch() {

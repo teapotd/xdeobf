@@ -308,6 +308,14 @@ bool Unflattener::canNormalize(mblock_t *blk) {
 // Different cases may have common blocks what confuses decompiler. Make them unique by copying.
 bool Unflattener::copyCommonBlocks() {
 	std::set<mblock_t*> used;
+
+	// Mark prologue blocks as used
+	mblock_t *blk = mba->get_mblock(0);
+	while (blk->nsucc() == 1) {
+		used.insert(blk);
+		blk = mba->get_mblock(blk->succ(0));
+	}
+
 	for (auto &entry : keyToTarget) {
 		if (!copyCommonBlocks(used, entry.second)) {
 			return false;

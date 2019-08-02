@@ -21,6 +21,7 @@ struct Unflattener : public optblock_t {
 	void rediscoverSwitch();
 	void recoverSuccesors(mblock_t *blk);
 	void setTargetBlock(mblock_t *exitPoint, uint32 targetKey);
+	bool backtraceDispatcherVarAssignment(mblock_t *start, mblock_t *&stop, uint32 &value);
 
 	mbl_array_t *mba;
 	mba_maturity_t maturity = MMAT_ZERO;

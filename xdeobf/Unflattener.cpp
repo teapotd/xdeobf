@@ -481,47 +481,80 @@ void Unflattener::recoverSuccesors(mblock_t *blk) {
 		throw DeobfuscationException("Dispatcher switch case has %d exit points (id: %d)", nExitPoints, blk->serial);
 	}
 
-	mblock_t *curBlock = exitPoint;
+	mblock_t *forkBlock = nullptr;
+	uint32 key;
 
-	while (true) {
-		for (minsn_t *ins = curBlock->tail; ins; ins = ins->prev) {
-			if (ins->opcode == m_mov && ins->d.t == mop_r && ins->d.r == dispatcherVar) {
-				if (ins->l.t != mop_n) {
-					throw DeobfuscationException("Non-numeric assignment to dispatcher variable (id: %d)", curBlock->serial);
-				}
-				return setTargetBlock(exitPoint, uint32(ins->l.nnn->value));
-			}
-		}
-
-		if (curBlock->predset.find(dispatcherRoot->serial) != curBlock->predset.end()) {
-			throw DeobfuscationException("Assignment to dispatcher variable not found (id: %d)", curBlock->serial);
-		}
-
-		if (curBlock->npred() != 1) {
-			if (curBlock->npred() != 2) {
-				throw DeobfuscationException("Unexpected predecessors (id: %d)", curBlock->serial);
-			}
-			break;
-		}
-
-		curBlock = mba->get_mblock(curBlock->pred(0));
+	if (backtraceDispatcherVarAssignment(exitPoint, forkBlock, key)) {
+		setTargetBlock(exitPoint, key);
+		return;
 	}
 
-	msg("divergeeee %d\n", curBlock->serial);
+	if (forkBlock->npred() != 2) {
+		throw DeobfuscationException("Unexpected predecessors count (id: %d)", forkBlock->serial);
+	}
+
+	mblock_t *jccBlock = mba->get_mblock(forkBlock->pred(0));
+	mblock_t *nonJccBlock = mba->get_mblock(forkBlock->pred(1));
+
+	if (!endsWithJcc(jccBlock)) {
+		std::swap(jccBlock, nonJccBlock);
+	}
+
+	if (!endsWithJcc(jccBlock) || endsWithJcc(nonJccBlock)) {
+		throw DeobfuscationException("Unrecognized branch type (id: %d)", forkBlock->serial);
+	}
+
+	uint32 notTakenKey;
+	mblock_t *stopBlock = jccBlock;
+	
+	if (!backtraceDispatcherVarAssignment(nonJccBlock, stopBlock, notTakenKey)) {
+		throw DeobfuscationException("Backtracing JCC-not-taken branch failed (id: %d)", forkBlock->serial);
+	}
+
+	stopBlock = nullptr;
+
+	if (!backtraceDispatcherVarAssignment(jccBlock, stopBlock, key)) {
+		throw DeobfuscationException("Backtracing from JCC failed (id: %d)", forkBlock->serial);
+	}
+
+	setTargetBlock(exitPoint, key);
+	setTargetBlock(nonJccBlock, notTakenKey);
+}
+
+bool Unflattener::backtraceDispatcherVarAssignment(mblock_t *start, mblock_t *&stop, uint32 &value) {
+	while (start != stop && start != dispatcherRoot) {
+		for (minsn_t *ins = start->tail; ins; ins = ins->prev) {
+			if (ins->opcode == m_mov && ins->d.t == mop_r && ins->d.r == dispatcherVar) {
+				if (ins->l.t != mop_n) {
+					throw DeobfuscationException("Non-numeric assignment to dispatcher variable (id: %d)", start->serial);
+				}
+				value = uint32(ins->l.nnn->value);
+				stop = start;
+				return true;
+			}
+		}
+
+		if (start->npred() != 1) {
+			break;
+		}
+		start = mba->get_mblock(start->pred(0));
+	}
+
+	stop = start;
+	return false;
 }
 
 void Unflattener::setTargetBlock(mblock_t *exitPoint, uint32 targetKey) {
 	if (!keyToTarget.count(targetKey)) {
 		throw DeobfuscationException("Missing key: %lu (id: %d)", targetKey, exitPoint->serial);
 	}
-
 	if (endsWithJcc(exitPoint)) {
 		throw DeobfuscationException("Exit point is conditional jump (id: %d)", exitPoint->serial);
 	}
-
 	if (exitPoint->type != BLT_1WAY) {
 		throw DeobfuscationException("Unexpected block type (id: %d)", exitPoint->serial);
 	}
 
+	//dbg("[I] Changing goto for %d\n", exitPoint->serial);
 	forceBlockGoto(exitPoint, keyToTarget[targetKey]);
 }

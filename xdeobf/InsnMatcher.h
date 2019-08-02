@@ -88,36 +88,36 @@ struct OpInsnPattern : public OpPattern {
 	}
 };
 
-std::unique_ptr<OpPattern> opAny(const char *name = nullptr) {
+static std::unique_ptr<OpPattern> opAny(const char *name = nullptr) {
 	auto op = std::make_unique<OpAnyPattern>();
 	op->name = name;
 	return op;
 }
 
-std::unique_ptr<OpPattern> opNumber(const char *name, uint64 value) {
+static std::unique_ptr<OpPattern> opNumber(const char *name, uint64 value) {
 	auto op = std::make_unique<OpNumberPattern>();
 	op->value = value;
 	return op;
 }
 
-std::unique_ptr<OpPattern> opNumber(uint64 value) {
+static std::unique_ptr<OpPattern> opNumber(uint64 value) {
 	return opNumber(nullptr, value);
 }
 
-std::unique_ptr<OpPattern> opInsn(const char *name, InsnPattern&& insn) {
+static std::unique_ptr<OpPattern> opInsn(const char *name, InsnPattern&& insn) {
 	auto op = std::make_unique<OpInsnPattern>();
 	op->insn = std::move(insn);
 	return op;
 }
 
-std::unique_ptr<OpPattern> opInsn(InsnPattern&& insn) {
+static std::unique_ptr<OpPattern> opInsn(InsnPattern&& insn) {
 	return opInsn(nullptr, std::move(insn));
 }
 
-InsnPattern insnPat(const char *name, mcode_t code = m_any, std::unique_ptr<OpPattern>&& left = opAny(), std::unique_ptr<OpPattern>&& right = opAny(), bool commutative = false) {
+static InsnPattern insnPat(const char *name, mcode_t code = m_any, std::unique_ptr<OpPattern>&& left = opAny(), std::unique_ptr<OpPattern>&& right = opAny(), bool commutative = false) {
 	return InsnPattern{ name, code, std::move(left), std::move(right), commutative };
 }
 
-InsnPattern insnPat(mcode_t code = m_any, std::unique_ptr<OpPattern>&& left = opAny(), std::unique_ptr<OpPattern>&& right = opAny(), bool commutative = false) {
+static InsnPattern insnPat(mcode_t code = m_any, std::unique_ptr<OpPattern>&& left = opAny(), std::unique_ptr<OpPattern>&& right = opAny(), bool commutative = false) {
 	return insnPat(nullptr, code, std::move(left), std::move(right), commutative);
 }

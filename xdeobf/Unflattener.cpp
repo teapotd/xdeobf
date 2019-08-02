@@ -4,24 +4,29 @@
 int Unflattener::func(mblock_t *blk) {
 	mba = blk->mba;
 	if (mba->maturity == maturity) {
-		// We're manipulating the whole graph in LOCOPT phase, so just report "change" for each block
-		return (maturity == MMAT_LOCOPT);
+		return 0;
 	}
 
 	maturity = mba->maturity;
 	dbg("[I] Current maturity: %s\n", mmatToString(maturity));
 
 	if (maturity == MMAT_LOCOPT) {
-		performSwitchReconstruction();
-		mba->mark_chains_dirty();
-		dumpMbaToFile(mba, "C:\\Users\\teapot\\Desktop\\mba_dump\\done.txt");
+		success = performSwitchReconstruction();
 		mba->verify(true);
 		return 1;
 	}
+
+	if (success && maturity == MMAT_GLBOPT2) {
+		success = performControlFlowReconstruction();
+		mba->verify(true);
+		return 1;
+	}
+
 	return 0;
 }
 
-// LOCOPT phase: reconstruct dispatcher switch
+// >>> PHASE #1: dispatcher switch reconstruction
+
 bool Unflattener::performSwitchReconstruction() {
 	if (!findDispatcherVar()) {
 		return false;
@@ -260,7 +265,7 @@ bool Unflattener::normalizeJumpsToDispatcher(mblock_t *blk) {
 
 	if (blk->nsucc() == 1) {
 		if (shouldNormalize(mba->get_mblock(blk->succ(0)))) {
-			dbg("[I] Normalizing goto for %d\n", blk->serial);
+			//dbg("[I] Changing goto for %d\n", blk->serial);
 			forceBlockGoto(blk, dispatcherRoot);
 		}
 		return true;
@@ -280,13 +285,13 @@ bool Unflattener::normalizeJumpsToDispatcher(mblock_t *blk) {
 	}
 
 	if (normJump && normFall) {
-		dbg("[I] Changing conditional into goto for %d\n", blk->serial);
+		//dbg("[I] Changing conditional into goto for %d\n", blk->serial);
 		forceBlockGoto(blk, dispatcherRoot);
 	} else if (normJump) {
-		dbg("[I] Normalizing conditional jump for %d\n", blk->serial);
+		//dbg("[I] Changing conditional jump for %d\n", blk->serial);
 		setBlockJcc(blk, dispatcherRoot);
 	} else if (normFall) {
-		dbg("[I] Normalizing fallthrough for %d\n", blk->serial);
+		//dbg("[I] Changing fallthrough for %d\n", blk->serial);
 		insertGotoBlock(blk, dispatcherRoot);
 	}
 
@@ -399,7 +404,7 @@ bool Unflattener::copyCommonBlocks(std::set<mblock_t*> &used, mblock_t *root) {
 		}
 	}
 
-	dbg("[I] Copied %lu common blocks for subgraph of %d\n", oldToNew.size(), root->serial);
+	//dbg("[I] Copied %lu common blocks for subgraph of %d\n", oldToNew.size(), root->serial);
 	return true;
 }
 
@@ -409,7 +414,7 @@ bool Unflattener::createSwitch() {
 	for (auto &entry : keyToTarget) {
 		targetsToKeys[entry.second].push_back(entry.first);
 	}
-	targetsToKeys[mba->get_mblock(mba->qty - 1)] = {}; // default branch
+	targetsToKeys[dispatcherRoot] = {}; // default branch
 
 	mcases_t *cases = new mcases_t();
 	for (auto &entry : targetsToKeys) {
@@ -430,5 +435,155 @@ bool Unflattener::createSwitch() {
 	dispatcherRoot->insert_into_block(jtbl, dispatcherRoot->tail);
 	recalculateSuccesors(dispatcherRoot);
 	dbg("[I] Switch created\n");
+	return true;
+}
+
+// >>> PHASE #2: control flow reconstruction
+
+bool Unflattener::performControlFlowReconstruction() {
+	if (!rediscoverSwitch()) {
+		return false;
+	}
+
+	if (!recoverSuccesors(mba->get_mblock(0))) {
+		return false;
+	}
+
+	for (auto &entry : keyToTarget) {
+		if (!recoverSuccesors(entry.second)) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+bool Unflattener::rediscoverSwitch() {
+	keyToTarget.clear();
+	dispatcherBlocks.clear();
+	dispatcherRoot = nullptr;
+
+	mblock_t *blk = mba->get_mblock(0);
+	while (blk->nsucc() == 1) {
+		blk = mba->get_mblock(blk->succ(0));
+	}
+
+	if (blk->type != BLT_NWAY) {
+		msg("[E] Dispatcher switch not found (id: %d)\n", blk->serial);
+		return false;
+	}
+
+	minsn_t *tail = blk->tail;
+
+	if (!tail || tail->opcode != m_jtbl || tail->r.t != mop_c) {
+		msg("[E] Dispatcher switch is invalid (id: %d)\n", blk->serial);
+		return false;
+	}
+
+	if (tail->l.t != mop_r || tail->l.r != dispatcherVar) {
+		msg("[E] Unexpected switch (id: %d)\n", blk->serial);
+		return false;
+	}
+
+	mcases_t *cases = tail->r.c;
+
+	for (size_t i = 0; i < cases->size(); i++) {
+		for (sval_t key : cases->values[i]) {
+			keyToTarget[uint32(key)] = mba->get_mblock(cases->targets[i]);
+		}
+	}
+
+	dispatcherRoot = blk;
+	dbg("[I] Dispatcher switch is %d\n", dispatcherRoot->serial);
+	return true;
+}
+
+bool Unflattener::recoverSuccesors(mblock_t *blk) {
+	std::queue<int> que;
+	std::set<int> seen;
+	que.push(blk->serial);
+
+	mblock_t *exitPoint = nullptr;
+	int nExitPoints = 0;
+
+	while (!que.empty()) {
+		int id = que.front();
+		que.pop();
+
+		if (!seen.insert(id).second) {
+			continue;
+		}
+
+		mblock_t *blk = mba->get_mblock(id);
+
+		for (int next : blk->succset) {
+			if (next == dispatcherRoot->serial) {
+				exitPoint = blk;
+				nExitPoints++;
+			} else {
+				que.push(next);
+			}
+		}
+	}
+
+	if (nExitPoints == 0) {
+		return true;
+	}
+
+	if (nExitPoints != 1) {
+		msg("[E] Dispatcher switch case has %d exit points (id: %d)\n", nExitPoints, blk->serial);
+		return false;
+	}
+
+	mblock_t *curBlock = exitPoint;
+
+	while (true) {
+		for (minsn_t *ins = curBlock->tail; ins; ins = ins->prev) {
+			if (ins->opcode == m_mov && ins->d.t == mop_r && ins->d.r == dispatcherVar) {
+				if (ins->l.t != mop_n) {
+					msg("[E] Non-numeric assignment to dispatcher variable (id: %d)\n", curBlock->serial);
+					return false;
+				}
+				return setTargetBlock(exitPoint, uint32(ins->l.nnn->value));
+			}
+		}
+
+		if (curBlock->predset.find(dispatcherRoot->serial) != curBlock->predset.end()) {
+			msg("[E] Assignment to dispatcher variable not found (id: %d)\n", curBlock->serial);
+			return false;
+		}
+
+		if (curBlock->npred() != 1) {
+			if (curBlock->npred() != 2) {
+				msg("[E] Unexpected predecessors (id: %d)\n", curBlock->serial);
+				return false;
+			}
+			break;
+		}
+
+		curBlock = mba->get_mblock(curBlock->pred(0));
+	}
+
+	msg("divergeeee %d\n", curBlock->serial);
+	return true;
+}
+
+bool Unflattener::setTargetBlock(mblock_t *exitPoint, uint32 targetKey) {
+	if (!keyToTarget.count(targetKey)) {
+		msg("[E] Missing key: %lu (id: %d)\n", targetKey, exitPoint->serial);
+		return false;
+	}
+
+	if (endsWithJcc(exitPoint)) {
+		msg("[E] Exit point is conditional jump (id: %d)\n", exitPoint->serial);
+		return false;
+	}
+
+	if (exitPoint->type != BLT_1WAY) {
+		msg("[E] Unexpected block type (id: %d)\n", exitPoint->serial);
+		return false;
+	}
+
+	forceBlockGoto(exitPoint, keyToTarget[targetKey]);
 	return true;
 }

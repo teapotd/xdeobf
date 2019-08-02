@@ -3,15 +3,11 @@
 void removeEdge(mblock_t *src, mblock_t *dst) {
 	src->succset.del(dst->serial);
 	dst->predset.del(src->serial);
-	src->mark_lists_dirty();
-	dst->mark_lists_dirty();
 }
 
 void addEdge(mblock_t *src, mblock_t *dst) {
 	src->succset.add(dst->serial);
 	dst->predset.add(src->serial);
-	src->mark_lists_dirty();
-	dst->mark_lists_dirty();
 }
 
 void recalculateSuccesors(mblock_t *block) {
@@ -42,6 +38,9 @@ void recalculateSuccesors(mblock_t *block) {
 			addEdge(block, mba->get_mblock(dst));
 		}
 	}
+
+	block->mark_lists_dirty();
+	mba->mark_chains_dirty();
 }
 
 // Insert new empty block with attributes copied from src
@@ -111,19 +110,15 @@ mblock_t *splitBlock(mblock_t *src, minsn_t *splitInsn) {
 	return dst;
 }
 
-// Skip 1WAY empty blocks or containing only gotos
+// Skip 1WAY blocks containing only gotos
 mblock_t *skipGotos(mblock_t *blk) {
 	mbl_array_t *mba = blk->mba;
 	while (true) {
-		if (!blk->head && blk->type == BLT_1WAY) {
-			blk = mba->get_mblock(blk->succ(0));
-		} else {
-			minsn_t *insn = getf_reginsn(blk->head);
-			if (!insn || insn->opcode != m_goto || insn->l.t != mop_b) {
-				return blk;
-			}
-			blk = mba->get_mblock(insn->l.b);
+		minsn_t *insn = getf_reginsn(blk->head);
+		if (!insn || insn->opcode != m_goto || insn->l.t != mop_b) {
+			return blk;
 		}
+		blk = mba->get_mblock(insn->l.b);
 	}
 }
 

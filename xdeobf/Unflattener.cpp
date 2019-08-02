@@ -17,7 +17,7 @@ int Unflattener::func(mblock_t *blk) {
 			changes = 1;
 			performSwitchReconstruction();
 			success = true;
-		} else if (success && maturity == MMAT_GLBOPT2) {
+		} else if (success && maturity == MMAT_GLBOPT1) {
 			changes = 1;
 			performControlFlowReconstruction();
 			success = true;

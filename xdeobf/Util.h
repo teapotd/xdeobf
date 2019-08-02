@@ -1,5 +1,24 @@
 #pragma once
 
+class DeobfuscationException : public std::exception {
+public:
+	DeobfuscationException(const char *msg) : whatStr(msg) {}
+
+	template<class ...Args>
+	DeobfuscationException(const char *format, Args... args) {
+		char buf[512];
+		snprintf(buf, sizeof(buf), format, args...);
+		whatStr = buf;
+	}
+
+	const char *what() const noexcept {
+		return whatStr.c_str();
+	}
+
+private:
+	std::string whatStr;
+};
+
 // Count 1-bits in integer (https://graphics.stanford.edu/~seander/bithacks.html)
 inline int bitCount(uint32 v) {
 	v = v - ((v >> 1) & 0x55555555);

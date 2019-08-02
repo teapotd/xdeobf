@@ -3,24 +3,24 @@
 struct Unflattener : public optblock_t {
 	int func(mblock_t *blk);
 
-	bool performSwitchReconstruction();
-	bool findDispatcherVar();
-	bool extractDispatcherRoot();
-	bool processDispatcherSubgraph();
-	bool normalizeJumpsToDispatcher();
-	bool normalizeJumpsToDispatcher(mblock_t *blk);
-	bool copyCommonBlocks();
-	bool copyCommonBlocks(std::set<mblock_t*> &used, mblock_t *root);
-	bool createSwitch();
+	void performSwitchReconstruction();
+	void findDispatcherVar();
+	void extractDispatcherRoot();
+	void processDispatcherSubgraph();
+	void normalizeJumpsToDispatcher();
+	void normalizeJumpsToDispatcher(mblock_t *blk);
+	void copyCommonBlocks();
+	void copyCommonBlocks(std::set<mblock_t*> &used, mblock_t *root);
+	void createSwitch();
 
-	bool addCase(uint32 key, mblock_t *dst);
+	void addCase(uint32 key, mblock_t *dst);
 	bool shouldNormalize(mblock_t *blk);
 	bool canNormalize(mblock_t *blk);
 
-	bool performControlFlowReconstruction();
-	bool rediscoverSwitch();
-	bool recoverSuccesors(mblock_t *blk);
-	bool setTargetBlock(mblock_t *exitPoint, uint32 targetKey);
+	void performControlFlowReconstruction();
+	void rediscoverSwitch();
+	void recoverSuccesors(mblock_t *blk);
+	void setTargetBlock(mblock_t *exitPoint, uint32 targetKey);
 
 	mbl_array_t *mba;
 	mba_maturity_t maturity = MMAT_ZERO;

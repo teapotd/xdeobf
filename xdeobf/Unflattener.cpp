@@ -10,47 +10,42 @@ int Unflattener::func(mblock_t *blk) {
 	maturity = mba->maturity;
 	dbg("[I] Current maturity: %s\n", mmatToString(maturity));
 
-	if (maturity == MMAT_LOCOPT) {
-		success = performSwitchReconstruction();
-		mba->verify(true);
-		return 1;
+	int changes = 0;
+
+	try {
+		if (maturity == MMAT_LOCOPT) {
+			changes = 1;
+			performSwitchReconstruction();
+			success = true;
+		} else if (success && maturity == MMAT_GLBOPT2) {
+			changes = 1;
+			performControlFlowReconstruction();
+			success = true;
+		}
+	} catch (DeobfuscationException &e) {
+		msg("[E] %s\n", e.what());
+		success = false;
 	}
 
-	if (success && maturity == MMAT_GLBOPT2) {
-		success = performControlFlowReconstruction();
+	if (changes > 0) {
 		mba->verify(true);
-		return 1;
 	}
-
-	return 0;
+	return changes;
 }
 
 // >>> PHASE #1: dispatcher switch reconstruction
 
-bool Unflattener::performSwitchReconstruction() {
-	if (!findDispatcherVar()) {
-		return false;
-	}
-	if (!extractDispatcherRoot()) {
-		return false;
-	}
-	if (!processDispatcherSubgraph()) {
-		return false;
-	}
-	if (!normalizeJumpsToDispatcher()) {
-		return false;
-	}
-	if (!copyCommonBlocks()) {
-		return false;
-	}
-	if (!createSwitch()) {
-		return false;
-	}
-	return true;
+void Unflattener::performSwitchReconstruction() {
+	findDispatcherVar();
+	extractDispatcherRoot();
+	processDispatcherSubgraph();
+	normalizeJumpsToDispatcher();
+	copyCommonBlocks();
+	createSwitch();
 }
 
 // Find register used by dispatcher to resolve target block
-bool Unflattener::findDispatcherVar() {
+void Unflattener::findDispatcherVar() {
 	struct JumpInfo {
 		double entropy() {
 			int ones = 0;
@@ -99,21 +94,18 @@ bool Unflattener::findDispatcherVar() {
 	mba->for_all_topinsns(tmp);
 
 	if (tmp.maxSeen < 0) {
-		msg("[E] Dispatcher var not found\n");
-		return false;
+		throw DeobfuscationException("Dispatcher var not found");
 	}
 
 	JumpInfo &best = tmp.seen[tmp.maxSeen];
 	double entropy = best.entropy();
 
 	if (best.values.size() < 2) {
-		msg("[E] Dispatcher var not found\n");
-		return false;
+		throw DeobfuscationException("Dispatcher var not found");
 	}
 
 	if (entropy < 0.9) {
-		msg("[E] Too low entropy for dispatcher var (%lf)\n", entropy);
-		return false;
+		throw DeobfuscationException("Too low entropy for dispatcher var (%lf)", entropy);
 	}
 
 	dispatcherVar = best.reg;
@@ -121,34 +113,29 @@ bool Unflattener::findDispatcherVar() {
 	qstring name;
 	get_mreg_name(&name, dispatcherVar, 4);
 	dbg("[I] Dispatcher var is %s\n", name.c_str());
-	return true;
 }
 
 // Find first comparison against dispatcher variable and extract it to separate block if necessary
-bool Unflattener::extractDispatcherRoot() {
+void Unflattener::extractDispatcherRoot() {
 	mblock_t *blk = mba->get_mblock(0);
 	while (blk->nsucc() == 1) {
 		blk = mba->get_mblock(blk->succ(0));
 	}
 
 	if (blk->nsucc() != 2) {
-		msg("[E] Unexpected succesor count for dispatcher root (id: %d, nsucc: %d)\n", blk->serial, blk->nsucc());
-		return false;
+		throw DeobfuscationException("Unexpected succesor count for dispatcher root (id: %d, nsucc: %d)", blk->serial, blk->nsucc());
 	}
 
 	if (!blk->tail) {
-		msg("[E] Suspected dispatcher root is empty (id: %d)\n", blk->serial);
-		return false;
+		throw DeobfuscationException("Suspected dispatcher root is empty (id: %d)", blk->serial);
 	}
 
 	if (!is_mcode_jcond(blk->tail->opcode)) {
-		msg("[E] Suspected dispatcher root doesn't end with conditional jump (id: %d)\n", blk->serial);
-		return false;
+		throw DeobfuscationException("Suspected dispatcher root doesn't end with conditional jump (id: %d)", blk->serial);
 	}
 
 	if (!blk->tail->l.is_reg() || blk->tail->l.r != dispatcherVar) {
-		msg("[E] Suspected dispatcher root doesn't compare against dispatcher var (id: %d)\n", blk->serial);
-		return false;
+		throw DeobfuscationException("Suspected dispatcher root doesn't compare against dispatcher var (id: %d)", blk->serial);
 	}
 
 	minsn_t *condBegin = getJccRealBegin(blk->tail);
@@ -160,11 +147,10 @@ bool Unflattener::extractDispatcherRoot() {
 
 	dispatcherRoot = blk;
 	dbg("[I] Dispatcher root is %d\n", dispatcherRoot->serial);
-	return true;
 }
 
 // Find all blocks that belong to dispatcher and resolve switch cases
-bool Unflattener::processDispatcherSubgraph() {
+void Unflattener::processDispatcherSubgraph() {
 	std::queue<int> que;
 	que.push(dispatcherRoot->serial);
 	dispatcherBlocks.clear();
@@ -180,8 +166,7 @@ bool Unflattener::processDispatcherSubgraph() {
 		}
 
 		if (blk->nsucc() > 2) {
-			dbg("[E] Dispatcher block with more than 2 succesors (id: %d)\n", id);
-			return false;
+			throw DeobfuscationException("Dispatcher block with more than 2 succesors (id: %d)", id);
 		}
 
 		mblock_t *jump, *fall;
@@ -191,22 +176,17 @@ bool Unflattener::processDispatcherSubgraph() {
 
 		if (getBlockCondExits(blk, jump, fall)) {
 			if (!tail->l.is_reg() || tail->l.r != dispatcherVar || tail->r.t != mop_n) {
-				dbg("[E] Unexpected conditional at dispatcher block (id: %d)\n", id);
-				return false;
+				throw DeobfuscationException("Unexpected conditional at dispatcher block (id: %d)", id);
 			}
 
 			uint32 cmp = (uint32)tail->r.nnn->value;
 
 			if (tail->opcode == m_jz) {
 				que.push(fall->serial);
-				if (!addCase(cmp, jump)) {
-					return false;
-				}
+				addCase(cmp, jump);
 			} else if (tail->opcode == m_jnz) {
 				que.push(jump->serial);
-				if (!addCase(cmp, fall)) {
-					return false;
-				}
+				addCase(cmp, fall);
 			} else {
 				que.push(jump->serial);
 				que.push(fall->serial);
@@ -217,28 +197,21 @@ bool Unflattener::processDispatcherSubgraph() {
 	}
 
 	dbg("[I] Found %lu dispatcher blocks and %lu dispatcher exit points\n", dispatcherBlocks.size(), keyToTarget.size());
-	return true;
 }
 
-bool Unflattener::addCase(uint32 key, mblock_t *dst) {
+void Unflattener::addCase(uint32 key, mblock_t *dst) {
 	auto &elem = keyToTarget[key];
 	if (elem) {
-		msg("[E] Key %u has more than one target blocks (%d, %d)\n", elem->serial, dst->serial);
-		return false;
+		throw DeobfuscationException("Key %u has more than one target blocks (%d, %d)", key, elem->serial, dst->serial);
 	}
 	elem = dst;
-	return true;
 }
 
 // Sometimes there jump into internal dispatcher nodes, change them to dispatcher root
-bool Unflattener::normalizeJumpsToDispatcher() {
+void Unflattener::normalizeJumpsToDispatcher() {
 	for (int i = 0; i < mba->qty; i++) {
-		if (!normalizeJumpsToDispatcher(mba->get_mblock(i))) {
-			return false;
-		}
+		normalizeJumpsToDispatcher(mba->get_mblock(i));
 	}
-
-	bool ok = true;
 
 	// Now check if we didn't miss anything
 	for (mblock_t *blk : dispatcherBlocks) {
@@ -248,19 +221,15 @@ bool Unflattener::normalizeJumpsToDispatcher() {
 
 		for (int in : blk->predset) {
 			if (!dispatcherBlocks.count(mba->get_mblock(in))) {
-				msg("[E] Internal dispatcher block %d still has references from outside\n", blk->serial);
-				ok = false;
-				break;
+				throw DeobfuscationException("Internal dispatcher block %d still has references from outside", blk->serial);
 			}
 		}
 	}
-
-	return ok;
 }
 
-bool Unflattener::normalizeJumpsToDispatcher(mblock_t *blk) {
+void Unflattener::normalizeJumpsToDispatcher(mblock_t *blk) {
 	if (dispatcherBlocks.count(blk)) {
-		return true; // We don't care about jumps from dispatcher blocks
+		return; // We don't care about jumps from dispatcher blocks
 	}
 
 	if (blk->nsucc() == 1) {
@@ -268,12 +237,12 @@ bool Unflattener::normalizeJumpsToDispatcher(mblock_t *blk) {
 			//dbg("[I] Changing goto for %d\n", blk->serial);
 			forceBlockGoto(blk, dispatcherRoot);
 		}
-		return true;
+		return;
 	}
 	
 	mblock_t *jump, *fall;
 	if (!getBlockCondExits(blk, jump, fall)) {
-		return true;
+		return;
 	}
 
 	bool normJump = shouldNormalize(jump);
@@ -294,8 +263,6 @@ bool Unflattener::normalizeJumpsToDispatcher(mblock_t *blk) {
 		//dbg("[I] Changing fallthrough for %d\n", blk->serial);
 		insertGotoBlock(blk, dispatcherRoot);
 	}
-
-	return true;
 }
 
 bool Unflattener::shouldNormalize(mblock_t *blk) {
@@ -307,7 +274,7 @@ bool Unflattener::canNormalize(mblock_t *blk) {
 }
 
 // Different cases may have common blocks what confuses decompiler. Make them unique by copying.
-bool Unflattener::copyCommonBlocks() {
+void Unflattener::copyCommonBlocks() {
 	std::set<mblock_t*> used;
 
 	// Mark prologue blocks as used
@@ -318,17 +285,14 @@ bool Unflattener::copyCommonBlocks() {
 	}
 
 	for (auto &entry : keyToTarget) {
-		if (!copyCommonBlocks(used, entry.second)) {
-			return false;
-		}
+		copyCommonBlocks(used, entry.second);
 	}
-	return true;
 }
 
-bool Unflattener::copyCommonBlocks(std::set<mblock_t*> &used, mblock_t *root) {
+void Unflattener::copyCommonBlocks(std::set<mblock_t*> &used, mblock_t *root) {
 	if (used.count(root)) {
 		msg("[W] Multiple keys pointing to block %d\n", root->serial);
-		return true;
+		return;
 	}
 
 	std::set<mblock_t*> blocks;
@@ -345,8 +309,7 @@ bool Unflattener::copyCommonBlocks(std::set<mblock_t*> &used, mblock_t *root) {
 		}
 
 		if (blk->nsucc() > 2) {
-			msg("[W] Switches are currently unsupported (id: %d)\n", root->serial);
-			return true;
+			throw DeobfuscationException("NWAY blocks are currently unsupported (id: %d)", root->serial);
 		}
 
 		if (blocks.insert(blk).second) {
@@ -384,7 +347,7 @@ bool Unflattener::copyCommonBlocks(std::set<mblock_t*> &used, mblock_t *root) {
 	}
 
 	if (oldToNew.empty()) {
-		return true;
+		return;
 	}
 
 	for (mblock_t *block : blocks) {
@@ -405,11 +368,10 @@ bool Unflattener::copyCommonBlocks(std::set<mblock_t*> &used, mblock_t *root) {
 	}
 
 	//dbg("[I] Copied %lu common blocks for subgraph of %d\n", oldToNew.size(), root->serial);
-	return true;
 }
 
 // Finally, change dispatcher root into NWAY block (a switch)
-bool Unflattener::createSwitch() {
+void Unflattener::createSwitch() {
 	std::map<mblock_t*, svalvec_t> targetsToKeys;
 	for (auto &entry : keyToTarget) {
 		targetsToKeys[entry.second].push_back(entry.first);
@@ -435,30 +397,19 @@ bool Unflattener::createSwitch() {
 	dispatcherRoot->insert_into_block(jtbl, dispatcherRoot->tail);
 	recalculateSuccesors(dispatcherRoot);
 	dbg("[I] Switch created\n");
-	return true;
 }
 
 // >>> PHASE #2: control flow reconstruction
 
-bool Unflattener::performControlFlowReconstruction() {
-	if (!rediscoverSwitch()) {
-		return false;
-	}
-
-	if (!recoverSuccesors(mba->get_mblock(0))) {
-		return false;
-	}
-
+void Unflattener::performControlFlowReconstruction() {
+	rediscoverSwitch();
+	recoverSuccesors(mba->get_mblock(0));
 	for (auto &entry : keyToTarget) {
-		if (!recoverSuccesors(entry.second)) {
-			return false;
-		}
+		recoverSuccesors(entry.second);
 	}
-
-	return true;
 }
 
-bool Unflattener::rediscoverSwitch() {
+void Unflattener::rediscoverSwitch() {
 	keyToTarget.clear();
 	dispatcherBlocks.clear();
 	dispatcherRoot = nullptr;
@@ -469,20 +420,17 @@ bool Unflattener::rediscoverSwitch() {
 	}
 
 	if (blk->type != BLT_NWAY) {
-		msg("[E] Dispatcher switch not found (id: %d)\n", blk->serial);
-		return false;
+		throw DeobfuscationException("Dispatcher switch not found (id: %d)", blk->serial);
 	}
 
 	minsn_t *tail = blk->tail;
 
 	if (!tail || tail->opcode != m_jtbl || tail->r.t != mop_c) {
-		msg("[E] Dispatcher switch is invalid (id: %d)\n", blk->serial);
-		return false;
+		throw DeobfuscationException("Dispatcher switch is invalid (id: %d)", blk->serial);
 	}
 
 	if (tail->l.t != mop_r || tail->l.r != dispatcherVar) {
-		msg("[E] Unexpected switch (id: %d)\n", blk->serial);
-		return false;
+		throw DeobfuscationException("Unexpected switch (id: %d)", blk->serial);
 	}
 
 	mcases_t *cases = tail->r.c;
@@ -495,10 +443,9 @@ bool Unflattener::rediscoverSwitch() {
 
 	dispatcherRoot = blk;
 	dbg("[I] Dispatcher switch is %d\n", dispatcherRoot->serial);
-	return true;
 }
 
-bool Unflattener::recoverSuccesors(mblock_t *blk) {
+void Unflattener::recoverSuccesors(mblock_t *blk) {
 	std::queue<int> que;
 	std::set<int> seen;
 	que.push(blk->serial);
@@ -527,12 +474,11 @@ bool Unflattener::recoverSuccesors(mblock_t *blk) {
 	}
 
 	if (nExitPoints == 0) {
-		return true;
+		return;
 	}
 
 	if (nExitPoints != 1) {
-		msg("[E] Dispatcher switch case has %d exit points (id: %d)\n", nExitPoints, blk->serial);
-		return false;
+		throw DeobfuscationException("Dispatcher switch case has %d exit points (id: %d)", nExitPoints, blk->serial);
 	}
 
 	mblock_t *curBlock = exitPoint;
@@ -541,22 +487,19 @@ bool Unflattener::recoverSuccesors(mblock_t *blk) {
 		for (minsn_t *ins = curBlock->tail; ins; ins = ins->prev) {
 			if (ins->opcode == m_mov && ins->d.t == mop_r && ins->d.r == dispatcherVar) {
 				if (ins->l.t != mop_n) {
-					msg("[E] Non-numeric assignment to dispatcher variable (id: %d)\n", curBlock->serial);
-					return false;
+					throw DeobfuscationException("Non-numeric assignment to dispatcher variable (id: %d)", curBlock->serial);
 				}
 				return setTargetBlock(exitPoint, uint32(ins->l.nnn->value));
 			}
 		}
 
 		if (curBlock->predset.find(dispatcherRoot->serial) != curBlock->predset.end()) {
-			msg("[E] Assignment to dispatcher variable not found (id: %d)\n", curBlock->serial);
-			return false;
+			throw DeobfuscationException("Assignment to dispatcher variable not found (id: %d)", curBlock->serial);
 		}
 
 		if (curBlock->npred() != 1) {
 			if (curBlock->npred() != 2) {
-				msg("[E] Unexpected predecessors (id: %d)\n", curBlock->serial);
-				return false;
+				throw DeobfuscationException("Unexpected predecessors (id: %d)", curBlock->serial);
 			}
 			break;
 		}
@@ -565,25 +508,20 @@ bool Unflattener::recoverSuccesors(mblock_t *blk) {
 	}
 
 	msg("divergeeee %d\n", curBlock->serial);
-	return true;
 }
 
-bool Unflattener::setTargetBlock(mblock_t *exitPoint, uint32 targetKey) {
+void Unflattener::setTargetBlock(mblock_t *exitPoint, uint32 targetKey) {
 	if (!keyToTarget.count(targetKey)) {
-		msg("[E] Missing key: %lu (id: %d)\n", targetKey, exitPoint->serial);
-		return false;
+		throw DeobfuscationException("Missing key: %lu (id: %d)", targetKey, exitPoint->serial);
 	}
 
 	if (endsWithJcc(exitPoint)) {
-		msg("[E] Exit point is conditional jump (id: %d)\n", exitPoint->serial);
-		return false;
+		throw DeobfuscationException("Exit point is conditional jump (id: %d)", exitPoint->serial);
 	}
 
 	if (exitPoint->type != BLT_1WAY) {
-		msg("[E] Unexpected block type (id: %d)\n", exitPoint->serial);
-		return false;
+		throw DeobfuscationException("Unexpected block type (id: %d)", exitPoint->serial);
 	}
 
 	forceBlockGoto(exitPoint, keyToTarget[targetKey]);
-	return true;
 }

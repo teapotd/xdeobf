@@ -111,14 +111,19 @@ mblock_t *splitBlock(mblock_t *src, minsn_t *splitInsn) {
 	return dst;
 }
 
-// Skip 1WAY blocks containing only gotos
+// Skip 1WAY empty blocks or containing only gotos
 mblock_t *skipGotos(mblock_t *blk) {
+	mbl_array_t *mba = blk->mba;
 	while (true) {
-		minsn_t *insn = getf_reginsn(blk->head);
-		if (!insn || insn->opcode != m_goto || insn->l.t != mop_b) {
-			return blk;
+		if (!blk->head && blk->type == BLT_1WAY) {
+			blk = mba->get_mblock(blk->succ(0));
+		} else {
+			minsn_t *insn = getf_reginsn(blk->head);
+			if (!insn || insn->opcode != m_goto || insn->l.t != mop_b) {
+				return blk;
+			}
+			blk = mba->get_mblock(insn->l.b);
 		}
-		blk = blk->mba->get_mblock(insn->l.b);
 	}
 }
 

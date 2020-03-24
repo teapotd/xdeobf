@@ -1,5 +1,7 @@
 #pragma once
 
+// WIP implementation of instruction pattern matching
+
 constexpr mcode_t m_any = (mcode_t)m_max;
 
 struct CmpStr {

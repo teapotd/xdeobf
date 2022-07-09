@@ -1,6 +1,7 @@
 #include "stdafx.h"
+#include <stdexcept>
 
-int InsnOptimizer::func(mblock_t *blk, minsn_t *ins) {
+int idaapi InsnOptimizer::func(mblock_t *blk, minsn_t *ins, int optflags) {
 	this->mba = blk->mba;
 	this->blk = blk;
 	this->topins = ins;
@@ -18,7 +19,7 @@ int InsnOptimizer::func(mblock_t *blk, minsn_t *ins) {
 }
 
 // Callback for for_all_insns
-int InsnOptimizer::visit_minsn() {
+int idaapi InsnOptimizer::visit_minsn() {
 	int changes = processHints(curins->l) + processHints(curins->r);
 	if (changes > 0) {
 		return changes;
